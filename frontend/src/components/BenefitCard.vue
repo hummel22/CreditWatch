@@ -43,24 +43,15 @@ const statusTag = computed(() => {
   return { label: 'Tracking', tone: 'info' }
 })
 
-const timeWindowLabel = computed(() => {
-  if (props.benefit.current_window_label) {
-    return props.benefit.current_window_label
-  }
-  if (props.benefit.frequency === 'yearly') {
-    if (props.benefit.cycle_label) {
-      return props.benefit.cycle_label.includes('-')
-        ? `Cycle ${props.benefit.cycle_label}`
-        : `Year ${props.benefit.cycle_label}`
-    }
-    return 'Yearly cycle'
-  }
+const frequencyLabel = computed(() => {
   const frequency = props.benefit.frequency
   if (!frequency) {
     return ''
   }
   return frequency.charAt(0).toUpperCase() + frequency.slice(1)
 })
+
+const currentWindowLabel = computed(() => props.benefit.current_window_label || '')
 
 const expirationLabel = computed(() => {
   if (!props.benefit.expiration_date) {
@@ -73,12 +64,31 @@ const expirationLabel = computed(() => {
   }).format(new Date(props.benefit.expiration_date))
 })
 
+const incrementalProgress = computed(() => {
+  if (props.benefit.type !== 'incremental') {
+    return null
+  }
+  const used = Number(props.benefit.cycle_redemption_total ?? 0)
+  const target = Number(props.benefit.value ?? 0)
+  const remaining = props.benefit.remaining_value ?? Math.max(target - used, 0)
+  const percent = target > 0 ? Math.min((used / target) * 100, 100) : used > 0 ? 100 : 0
+  const statusText = target <= 0
+    ? `${used > 0 ? `$${used.toFixed(2)} logged` : 'No goal set'}`
+    : remaining <= 0
+      ? 'Complete'
+      : `$${remaining.toFixed(2)} remaining`
+  return {
+    used,
+    target,
+    remaining,
+    percent,
+    statusText
+  }
+})
+
 const redemptionSummary = computed(() => {
   if (props.benefit.type === 'incremental') {
-    const used = props.benefit.cycle_redemption_total || 0
-    const target = Number(props.benefit.value ?? 0)
-    const remaining = props.benefit.remaining_value ?? Math.max(target - used, 0)
-    return `Used $${used.toFixed(2)} of $${target.toFixed(2)} this cycle (${remaining <= 0 ? 'complete' : `$${remaining.toFixed(2)} remaining`})`
+    return ''
   }
   if (props.benefit.type === 'cumulative') {
     const used = props.benefit.cycle_redemption_total || 0
@@ -97,63 +107,6 @@ const showHistoryButton = computed(
 const isRecurringBenefit = computed(() =>
   ['monthly', 'quarterly', 'semiannual'].includes(props.benefit.frequency)
 )
-
-const occurrencesPerYear = {
-  monthly: 12,
-  quarterly: 4,
-  semiannual: 2,
-  yearly: 1
-}
-
-const frequencyLabels = {
-  monthly: 'month',
-  quarterly: 'quarter',
-  semiannual: 'half-year',
-  yearly: 'year'
-}
-
-const annualPotential = computed(() => {
-  const occurrences = occurrencesPerYear[props.benefit.frequency] || 1
-  if (props.benefit.type === 'cumulative') {
-    return props.benefit.expected_value ?? props.benefit.cycle_redemption_total ?? 0
-  }
-  const perPeriod = Number(props.benefit.value ?? 0)
-  return perPeriod * occurrences
-})
-
-const periodPotential = computed(() => {
-  const occurrences = occurrencesPerYear[props.benefit.frequency] || 1
-  if (!occurrences) {
-    return annualPotential.value
-  }
-  if (props.benefit.type === 'cumulative') {
-    return annualPotential.value / occurrences
-  }
-  return Number(props.benefit.value ?? 0)
-})
-
-const recurringActualCopy = computed(() => {
-  if (!isRecurringBenefit.value) {
-    return ''
-  }
-  const windowLabel = props.benefit.current_window_label || `Current ${frequencyLabels[props.benefit.frequency] || 'period'}`
-  const windowAmount = Number(props.benefit.current_window_total ?? 0)
-  const cycleAmount = Number(props.benefit.cycle_redemption_total ?? 0)
-  const cycleLabel = props.benefit.cycle_label
-    ? props.benefit.cycle_label.includes('-')
-      ? `Cycle ${props.benefit.cycle_label}`
-      : `Year ${props.benefit.cycle_label}`
-    : 'Cycle total'
-  return `${windowLabel}: $${windowAmount.toFixed(2)} logged • ${cycleLabel}: $${cycleAmount.toFixed(2)}`
-})
-
-const recurringPotentialCopy = computed(() => {
-  if (!isRecurringBenefit.value || !annualPotential.value) {
-    return ''
-  }
-  const label = frequencyLabels[props.benefit.frequency] || 'period'
-  return `Potential annual $${annualPotential.value.toFixed(2)} • Per ${label} $${periodPotential.value.toFixed(2)}`
-})
 </script>
 
 <template>
@@ -163,8 +116,11 @@ const recurringPotentialCopy = computed(() => {
         <div class="benefit-name">{{ benefit.name }}</div>
         <div class="benefit-meta-row">
           <div class="benefit-meta">
-            <span class="benefit-type">{{ typeLabel }}</span>
-            <span v-if="timeWindowLabel" class="benefit-window">{{ timeWindowLabel }}</span>
+            <div class="benefit-meta-line">
+              <span class="benefit-type">{{ typeLabel }}</span>
+              <span v-if="frequencyLabel" class="benefit-frequency">{{ frequencyLabel }}</span>
+            </div>
+            <span v-if="currentWindowLabel" class="benefit-window">{{ currentWindowLabel }}</span>
           </div>
           <div class="tag" :class="statusTag.tone">
             <span>{{ statusTag.label }}</span>
@@ -207,9 +163,27 @@ const recurringPotentialCopy = computed(() => {
     <section class="benefit-body">
       <p v-if="benefit.description">{{ benefit.description }}</p>
       <p class="benefit-expiration">Expires: {{ expirationLabel }}</p>
-      <p class="benefit-progress">{{ redemptionSummary }}</p>
-      <p v-if="recurringActualCopy" class="benefit-recurring">{{ recurringActualCopy }}</p>
-      <p v-if="recurringPotentialCopy" class="benefit-recurring potential">{{ recurringPotentialCopy }}</p>
+      <div
+        v-if="incrementalProgress"
+        class="benefit-progress-chart"
+        role="img"
+        :aria-label="`Used $${incrementalProgress.used.toFixed(2)} of $${incrementalProgress.target.toFixed(2)}`"
+      >
+        <div class="benefit-progress-chart__track">
+          <div
+            class="benefit-progress-chart__fill"
+            :style="{ width: `${incrementalProgress.percent}%` }"
+            aria-hidden="true"
+          ></div>
+        </div>
+        <div class="benefit-progress-chart__legend">
+          <span class="benefit-progress-chart__value">
+            Used ${{ incrementalProgress.used.toFixed(2) }} of ${{ incrementalProgress.target.toFixed(2) }}
+          </span>
+          <span class="benefit-progress-chart__status">{{ incrementalProgress.statusText }}</span>
+        </div>
+      </div>
+      <p v-else class="benefit-progress">{{ redemptionSummary }}</p>
     </section>
 
     <footer class="benefit-footer">
@@ -222,7 +196,7 @@ const recurringPotentialCopy = computed(() => {
             Expected ${{ Number(benefit.expected_value).toFixed(2) }}
           </template>
           <template v-else>
-            ${{ benefit.cycle_redemption_total.toFixed(2) }} tracked
+            ${{ benefit.cycle_redemption_total.toFixed(2) }}
           </template>
         </strong>
       </div>
@@ -276,10 +250,13 @@ const recurringPotentialCopy = computed(() => {
 </template>
 
 <style scoped>
+
 .benefit-icons {
   display: flex;
   gap: 0.3rem;
-  align-items: flex-start;
+  align-items: center;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .benefit-icons .icon-button {
@@ -300,9 +277,8 @@ const recurringPotentialCopy = computed(() => {
 
 .benefit-header {
   display: flex;
-  justify-content: space-between;
   align-items: flex-start;
-  gap: 0.5rem;
+  gap: 0.75rem;
 }
 
 .benefit-header__primary {
@@ -310,21 +286,33 @@ const recurringPotentialCopy = computed(() => {
   flex-direction: column;
   gap: 0.4rem;
   flex: 1;
+  min-width: 0;
+}
+
+.benefit-name {
+  overflow-wrap: anywhere;
 }
 
 .benefit-meta-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 0.5rem;
 }
 
 .benefit-meta {
   display: flex;
-  align-items: center;
-  gap: 0.4rem;
+  flex-direction: column;
+  gap: 0.2rem;
   font-size: 0.75rem;
   color: #475569;
+}
+
+.benefit-meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
 }
 
 .benefit-expiration {
@@ -345,6 +333,7 @@ const recurringPotentialCopy = computed(() => {
   font-size: 0.72rem;
   color: #64748b;
   font-weight: 500;
+  display: block;
 }
 
 .benefit-progress {
@@ -353,14 +342,38 @@ const recurringPotentialCopy = computed(() => {
   color: #0f172a;
 }
 
-.benefit-recurring {
-  font-size: 0.78rem;
-  margin: 0.1rem 0 0;
-  color: #6366f1;
+.benefit-progress-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
 }
 
-.benefit-recurring.potential {
-  color: #94a3b8;
+.benefit-progress-chart__track {
+  width: 100%;
+  height: 0.45rem;
+  background: rgba(148, 163, 184, 0.25);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.benefit-progress-chart__fill {
+  height: 100%;
+  background: linear-gradient(90deg, #38bdf8, #6366f1);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.benefit-progress-chart__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: #0f172a;
+}
+
+.benefit-progress-chart__status {
+  color: #6366f1;
 }
 
 strong {

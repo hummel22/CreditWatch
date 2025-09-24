@@ -2,7 +2,11 @@
 import { computed, reactive, ref, watch } from 'vue'
 import BaseModal from './BaseModal.vue'
 import BenefitCard from './BenefitCard.vue'
-import { computeCardCycle, formatDateInput } from '../utils/dates'
+import {
+  computeCardCycle,
+  computeFrequencyWindows,
+  formatDateInput
+} from '../utils/dates'
 
 const props = defineProps({
   card: {
@@ -152,18 +156,32 @@ const netStatus = computed(() => {
     : { tone: 'warning', label: `Short by $${Math.abs(difference).toFixed(2)}` }
 })
 
+function computeWindowExpiration(frequency) {
+  const cycle = currentCycle.value
+  if (!cycle) {
+    return ''
+  }
+  const windows = computeFrequencyWindows(cycle, frequency)
+  if (!windows.length) {
+    return ''
+  }
+  const today = Date.now()
+  const activeWindow =
+    windows.find((window) => {
+      const start = window.start.getTime()
+      const end = window.end.getTime()
+      return today >= start && today < end
+    }) || windows[windows.length - 1]
+  if (!activeWindow || !(activeWindow.end instanceof Date)) {
+    return ''
+  }
+  const windowEnd = new Date(activeWindow.end.getTime() - 24 * 60 * 60 * 1000)
+  return formatDateInput(windowEnd)
+}
+
 function computeDefaultExpiration(frequency) {
-  const today = new Date()
-  if (frequency === 'monthly') {
-    return formatDateInput(new Date(today.getFullYear(), today.getMonth() + 1, 0))
-  }
-  if (frequency === 'quarterly') {
-    const startMonth = Math.floor(today.getMonth() / 3) * 3
-    return formatDateInput(new Date(today.getFullYear(), startMonth + 3, 0))
-  }
-  if (frequency === 'semiannual') {
-    const endMonth = today.getMonth() < 6 ? 6 : 12
-    return formatDateInput(new Date(today.getFullYear(), endMonth, 0))
+  if (frequency === 'monthly' || frequency === 'quarterly' || frequency === 'semiannual') {
+    return computeWindowExpiration(frequency)
   }
   if (frequency === 'yearly') {
     if (form.yearlyAlignment === 'anniversary') {
@@ -171,8 +189,8 @@ function computeDefaultExpiration(frequency) {
       end.setDate(end.getDate() - 1)
       return formatDateInput(end)
     }
-    const end = new Date(today.getFullYear(), 11, 31)
-    return formatDateInput(end)
+    const currentYearEnd = new Date(new Date().getFullYear(), 11, 31)
+    return formatDateInput(currentYearEnd)
   }
   return ''
 }
@@ -505,7 +523,7 @@ function handleCardDelete() {
 .card-header__meta {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.6rem;
   flex-wrap: wrap;
   justify-content: flex-end;
 }
@@ -539,11 +557,17 @@ function handleCardDelete() {
 .card-toolbar {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.3rem;
 }
 
 .card-toolbar .icon-button {
-  font-size: 1.1rem;
+  width: 1.65rem;
+  height: 1.65rem;
+}
+
+.card-toolbar .icon-button svg {
+  width: 0.95rem;
+  height: 0.95rem;
 }
 
 .company-pill {

@@ -964,12 +964,6 @@ onMounted(async () => {
       <div class="container">
 
       <template v-if="!isAdminView">
-        <section class="section-card intro-section">
-          <h2 class="section-title">Add a credit card</h2>
-          <p class="section-description">
-            Keep your issuer, account, and fee details in one place so you always know a card's value.
-          </p>
-        </section>
 
         <section class="section-card">
           <h2 class="section-title">Portfolio overview</h2>

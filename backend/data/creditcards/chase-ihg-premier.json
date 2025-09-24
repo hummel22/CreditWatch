@@ -1,6 +1,6 @@
 {
   "slug": "chase-ihg-premier",
-  "card_type": "IHG\u00ae Rewards Premier Credit Card",
+  "card_type": "IHG® Rewards Premier Credit Card",
   "company_name": "Chase",
   "annual_fee": 99,
   "benefits": [
@@ -21,6 +21,12 @@
     {
       "name": "IHG promotions",
       "description": "Log savings from targeted IHG offers and promotions.",
+      "frequency": "yearly",
+      "type": "cumulative"
+    },
+    {
+      "name": "Points",
+      "description": "Track rewards points accrued throughout the year.",
       "frequency": "yearly",
       "type": "cumulative"
     }

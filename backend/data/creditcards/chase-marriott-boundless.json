@@ -1,6 +1,6 @@
 {
   "slug": "chase-marriott-boundless",
-  "card_type": "Marriott Bonvoy Boundless\u00ae Credit Card",
+  "card_type": "Marriott Bonvoy Boundless® Credit Card",
   "company_name": "Chase",
   "annual_fee": 95,
   "benefits": [
@@ -21,6 +21,12 @@
     {
       "name": "Marriott offers",
       "description": "Capture targeted Amex or Chase offers applied to the card.",
+      "frequency": "yearly",
+      "type": "cumulative"
+    },
+    {
+      "name": "Points",
+      "description": "Track rewards points accrued throughout the year.",
       "frequency": "yearly",
       "type": "cumulative"
     }

@@ -1,6 +1,6 @@
 {
   "slug": "chase-united-club",
-  "card_type": "United Club\u2122 Infinite Card",
+  "card_type": "United Club™ Infinite Card",
   "company_name": "Chase",
   "annual_fee": 525,
   "benefits": [
@@ -28,6 +28,12 @@
     {
       "name": "United offers",
       "description": "Track promotional savings from United cardmember offers.",
+      "frequency": "yearly",
+      "type": "cumulative"
+    },
+    {
+      "name": "Points",
+      "description": "Track rewards points accrued throughout the year.",
       "frequency": "yearly",
       "type": "cumulative"
     }

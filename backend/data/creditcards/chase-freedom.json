@@ -1,6 +1,6 @@
 {
   "slug": "chase-freedom",
-  "card_type": "Chase Freedom\u00ae",
+  "card_type": "Chase Freedom®",
   "company_name": "Chase",
   "annual_fee": 0,
   "benefits": [
@@ -23,6 +23,12 @@
       "frequency": "yearly",
       "type": "standard",
       "value": 100
+    },
+    {
+      "name": "Points",
+      "description": "Track rewards points accrued throughout the year.",
+      "frequency": "yearly",
+      "type": "cumulative"
     }
   ]
 }

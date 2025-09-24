@@ -13,7 +13,7 @@
     },
     {
       "name": "Anniversary miles bonus",
-      "description": "10,000 anniversary miles each account anniversary (valued at 1\u00a2 per mile).",
+      "description": "10,000 anniversary miles each account anniversary (valued at 1¢ per mile).",
       "frequency": "yearly",
       "type": "standard",
       "value": 100
@@ -28,6 +28,12 @@
     {
       "name": "Capital One offers",
       "description": "Track statement credits earned from Capital One Offers.",
+      "frequency": "yearly",
+      "type": "cumulative"
+    },
+    {
+      "name": "Points",
+      "description": "Track rewards points accrued throughout the year.",
       "frequency": "yearly",
       "type": "cumulative"
     }

@@ -1,6 +1,6 @@
 {
   "slug": "chase-sapphire-reserve",
-  "card_type": "Chase Sapphire Reserve\u00ae",
+  "card_type": "Chase Sapphire Reserve®",
   "company_name": "Chase",
   "annual_fee": 550,
   "benefits": [
@@ -28,6 +28,12 @@
     {
       "name": "Chase Offers",
       "description": "Record savings from Chase Offers applied to Sapphire Reserve purchases.",
+      "frequency": "yearly",
+      "type": "cumulative"
+    },
+    {
+      "name": "Points",
+      "description": "Track rewards points accrued throughout the year.",
       "frequency": "yearly",
       "type": "cumulative"
     }

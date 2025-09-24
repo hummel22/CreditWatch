@@ -12,6 +12,7 @@ class BenefitFrequency(str, Enum):
 
     monthly = "monthly"
     quarterly = "quarterly"
+    semiannual = "semiannual"
     yearly = "yearly"
 
 
@@ -20,6 +21,11 @@ class CreditCard(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     card_name: str = Field(index=True)
+    company_name: str = Field(
+        default="",
+        index=True,
+        description="Card issuer or bank name",
+    )
     last_four: str = Field(min_length=4, max_length=4, description="Last four digits")
     account_name: str = Field(index=True, description="Account holder or user account identifier")
     annual_fee: float = Field(ge=0)

@@ -1,5 +1,6 @@
 <script setup>
-import { computed, reactive } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
+import BaseModal from './BaseModal.vue'
 import BenefitCard from './BenefitCard.vue'
 
 const props = defineProps({
@@ -9,19 +10,34 @@ const props = defineProps({
   },
   frequencies: {
     type: Array,
-    default: () => ['monthly', 'quarterly', 'yearly']
+    default: () => ['monthly', 'quarterly', 'semiannual', 'yearly']
   }
 })
 
 const emit = defineEmits(['add-benefit', 'toggle-benefit', 'delete-benefit', 'delete-card'])
 
+const benefitModalOpen = ref(false)
+const benefitsExpanded = ref(true)
+
+const defaultFrequency = computed(() => props.frequencies[0] || 'monthly')
+
 const form = reactive({
   name: '',
   description: '',
-  frequency: props.frequencies[0] || 'monthly',
+  frequency: defaultFrequency.value,
   value: '',
   expiration_date: ''
 })
+
+watch(
+  () => props.frequencies,
+  (options) => {
+    if (!options.includes(form.frequency)) {
+      form.frequency = defaultFrequency.value
+    }
+  },
+  { immediate: true }
+)
 
 const baseline = computed(() =>
   Math.max(props.card.annual_fee, props.card.potential_value, props.card.utilized_value, 1)
@@ -45,7 +61,7 @@ const netStatus = computed(() => {
 function resetForm() {
   form.name = ''
   form.description = ''
-  form.frequency = props.frequencies[0] || 'monthly'
+  form.frequency = defaultFrequency.value
   form.value = ''
   form.expiration_date = ''
 }
@@ -64,7 +80,20 @@ function submitForm() {
       expiration_date: form.expiration_date || null
     }
   })
+  closeBenefitModal()
+}
+
+function openBenefitModal() {
+  benefitModalOpen.value = true
+}
+
+function closeBenefitModal() {
+  benefitModalOpen.value = false
   resetForm()
+}
+
+function toggleBenefits() {
+  benefitsExpanded.value = !benefitsExpanded.value
 }
 </script>
 
@@ -73,7 +102,8 @@ function submitForm() {
     <header class="card-header">
       <div>
         <div class="card-title">{{ card.card_name }}</div>
-        <div class="annual-fee">
+        <div class="card-subtitle">
+          <span v-if="card.company_name" class="company-pill">{{ card.company_name }}</span>
           <span>Ending {{ card.last_four }}</span>
           <span>•</span>
           <span>{{ card.account_name }}</span>
@@ -95,28 +125,54 @@ function submitForm() {
       <div class="tag" :class="netStatus.tone">{{ netStatus.label }}</div>
     </section>
 
-    <section>
-      <h3 class="section-title">Benefits</h3>
-      <div v-if="card.benefits.length" class="benefits-grid">
-        <BenefitCard
-          v-for="benefit in card.benefits"
-          :key="benefit.id"
-          :benefit="benefit"
-          @toggle="(value) => emit('toggle-benefit', { id: benefit.id, value })"
-          @delete="emit('delete-benefit', benefit.id)"
-        />
+    <section class="benefits-section">
+      <div class="section-header">
+        <h3 class="section-title">Benefits</h3>
+        <div class="section-actions">
+          <button class="primary-button secondary small" type="button" @click="openBenefitModal">
+            Add benefit
+          </button>
+          <button
+            class="link-button"
+            type="button"
+            @click="toggleBenefits"
+            :aria-expanded="benefitsExpanded"
+          >
+            {{ benefitsExpanded ? 'Hide benefits' : 'Show benefits' }}
+          </button>
+        </div>
       </div>
-      <p v-else class="empty-state">No benefits tracked yet. Start by adding one below.</p>
+      <div v-if="benefitsExpanded">
+        <div v-if="card.benefits.length" class="benefits-grid">
+          <BenefitCard
+            v-for="benefit in card.benefits"
+            :key="benefit.id"
+            :benefit="benefit"
+            @toggle="(value) => emit('toggle-benefit', { id: benefit.id, value })"
+            @delete="emit('delete-benefit', benefit.id)"
+          />
+        </div>
+        <p v-else class="empty-state empty-benefits">
+          No benefits tracked yet.
+          <button class="link-button inline" type="button" @click="openBenefitModal">Add one now</button>
+          .
+        </p>
+      </div>
     </section>
 
-    <section>
-      <h3 class="section-title">Add a benefit</h3>
+    <footer class="card-footer">
+      <button class="primary-button danger" type="button" @click="emit('delete-card', card.id)">
+        Remove card
+      </button>
+    </footer>
+
+    <BaseModal :open="benefitModalOpen" title="Add a benefit" @close="closeBenefitModal">
       <form @submit.prevent="submitForm">
         <div class="field-group">
           <input v-model="form.name" type="text" placeholder="Benefit name" required />
           <input v-model="form.value" type="number" min="0" step="0.01" placeholder="Value" required />
         </div>
-        <textarea v-model="form.description" rows="2" placeholder="Description (optional)"></textarea>
+        <textarea v-model="form.description" rows="3" placeholder="Description (optional)"></textarea>
         <div class="field-group">
           <select v-model="form.frequency">
             <option v-for="option in frequencies" :key="option" :value="option">
@@ -125,25 +181,46 @@ function submitForm() {
           </select>
           <input v-model="form.expiration_date" type="date" />
         </div>
-        <div class="card-actions">
-          <button class="primary-button" type="submit">Add benefit</button>
-          <button class="primary-button danger" type="button" @click="emit('delete-card', card.id)">
-            Remove card
+        <div class="modal-actions">
+          <button class="primary-button secondary" type="button" @click="closeBenefitModal">
+            Cancel
           </button>
+          <button class="primary-button" type="submit">Save benefit</button>
         </div>
       </form>
-    </section>
+    </BaseModal>
   </article>
 </template>
 
 <style scoped>
-.card-actions {
+.card-footer {
   display: flex;
-  gap: 0.75rem;
+  justify-content: flex-end;
+  margin-top: 0.75rem;
 }
 
-.card-actions button:last-child {
-  margin-left: auto;
+.card-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  color: #475569;
+  font-size: 0.9rem;
+}
+
+.company-pill {
+  background: rgba(99, 102, 241, 0.14);
+  color: #4f46e5;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.empty-benefits {
+  margin-top: 1rem;
 }
 
 strong {

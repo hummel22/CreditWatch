@@ -8,7 +8,7 @@ const props = defineProps({
   },
   frequencies: {
     type: Array,
-    default: () => ['monthly', 'quarterly', 'yearly']
+    default: () => ['monthly', 'quarterly', 'semiannual', 'yearly']
   }
 })
 

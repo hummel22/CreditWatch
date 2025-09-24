@@ -45,6 +45,7 @@ class BenefitRead(BenefitBase):
 
 class CreditCardBase(SQLModel):
     card_name: str
+    company_name: str
     last_four: str = Field(min_length=4, max_length=4)
     account_name: str
     annual_fee: float = Field(ge=0)
@@ -57,6 +58,7 @@ class CreditCardCreate(CreditCardBase):
 
 class CreditCardUpdate(SQLModel):
     card_name: Optional[str] = None
+    company_name: Optional[str] = None
     last_four: Optional[str] = Field(default=None, min_length=4, max_length=4)
     account_name: Optional[str] = None
     annual_fee: Optional[float] = Field(default=None, ge=0)

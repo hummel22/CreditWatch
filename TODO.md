@@ -5,3 +5,11 @@
 - [ ] Email or push reminders for benefits that are about to expire.
 - [ ] Import/export functionality for moving data between environments.
 - [ ] Automated tests for the FastAPI services and Vue components.
+
+## Frontend polish
+
+- [x] Add semiannual options to benefits.
+- [x] Benefits box should be collapsible and expandable.
+- [x] Add benefit should be popup dialog.
+- [x] Add credit card should be popup dialog.
+- [x] Add company name to card (Chase, Amex, etc.).

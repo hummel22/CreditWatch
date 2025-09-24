@@ -86,13 +86,6 @@ textarea {
   border-radius: 999px;
 }
 
-.annual-fee {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  color: #475569;
-}
-
 .value-bar {
   position: relative;
   height: 12px;
@@ -271,6 +264,32 @@ textarea:focus {
   color: #111827;
 }
 
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.section-description {
+  margin: 0;
+  color: #475569;
+  line-height: 1.6;
+}
+
+.section-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.section-header .section-title {
+  margin-bottom: 0;
+}
+
 .empty-state {
   text-align: center;
   color: #64748b;
@@ -278,6 +297,41 @@ textarea:focus {
   border: 2px dashed rgba(148, 163, 184, 0.35);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.75);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.primary-button.small {
+  padding: 0.4rem 0.85rem;
+  font-size: 0.9rem;
+  box-shadow: 0 12px 20px rgba(99, 102, 241, 0.3);
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: #6366f1;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.35rem 0.5rem;
+  border-radius: 999px;
+  transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.link-button:hover {
+  background-color: rgba(99, 102, 241, 0.12);
+  color: #4f46e5;
+}
+
+.link-button.inline {
+  padding: 0;
+  border-radius: 0;
+  font: inherit;
 }
 
 @media (max-width: 768px) {

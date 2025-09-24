@@ -9,7 +9,7 @@ services:
     environment:
       - UVICORN_WORKERS=1
     ports:
-      - "8000:8000"
+      - "8010:8000"
 
   frontend:
     build:

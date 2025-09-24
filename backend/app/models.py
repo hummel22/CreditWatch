@@ -16,6 +16,14 @@ class BenefitFrequency(str, Enum):
     yearly = "yearly"
 
 
+class BenefitType(str, Enum):
+    """Different tracking behaviours for a benefit."""
+
+    standard = "standard"
+    incremental = "incremental"
+    cumulative = "cumulative"
+
+
 class CreditCard(SQLModel, table=True):
     """Credit card stored in the system."""
 
@@ -40,8 +48,20 @@ class Benefit(SQLModel, table=True):
     name: str
     description: Optional[str] = None
     frequency: BenefitFrequency
-    value: float = Field(ge=0)
+    type: BenefitType = Field(default=BenefitType.standard)
+    value: float = Field(default=0, ge=0)
     expiration_date: Optional[date] = None
     is_used: bool = Field(default=False)
     used_at: Optional[datetime] = None
+
+
+class BenefitRedemption(SQLModel, table=True):
+    """Individual redemption or usage entry for a benefit."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    benefit_id: int = Field(foreign_key="benefit.id", index=True)
+    label: str
+    amount: float = Field(ge=0)
+    occurred_on: date = Field(default_factory=date.today)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 

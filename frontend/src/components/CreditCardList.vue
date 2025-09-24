@@ -16,7 +16,9 @@ const emit = defineEmits([
   'add-benefit',
   'toggle-benefit',
   'delete-benefit',
-  'delete-card'
+  'delete-card',
+  'add-redemption',
+  'view-history'
 ])
 </script>
 
@@ -31,6 +33,8 @@ const emit = defineEmits([
       @toggle-benefit="emit('toggle-benefit', $event)"
       @delete-benefit="emit('delete-benefit', $event)"
       @delete-card="emit('delete-card', $event)"
+      @add-redemption="emit('add-redemption', $event)"
+      @view-history="emit('view-history', $event)"
     />
   </div>
 </template>

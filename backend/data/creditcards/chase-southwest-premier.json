@@ -1,0 +1,28 @@
+{
+  "slug": "chase-southwest-premier",
+  "card_type": "Southwest\u00ae Rapid Rewards\u00ae Premier Credit Card",
+  "company_name": "Chase",
+  "annual_fee": 99,
+  "benefits": [
+    {
+      "name": "Anniversary points bonus",
+      "description": "6,000 Rapid Rewards points on each account anniversary.",
+      "frequency": "yearly",
+      "type": "standard",
+      "value": 90
+    },
+    {
+      "name": "In-flight Wi-Fi credits",
+      "description": "Track statement credits for Southwest Wi-Fi purchases.",
+      "frequency": "yearly",
+      "type": "incremental",
+      "value": 60
+    },
+    {
+      "name": "Companion pass progress",
+      "description": "Add redemptions that count toward the Southwest Companion Pass.",
+      "frequency": "yearly",
+      "type": "cumulative"
+    }
+  ]
+}

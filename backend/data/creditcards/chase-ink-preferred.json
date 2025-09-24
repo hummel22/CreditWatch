@@ -1,0 +1,28 @@
+{
+  "slug": "chase-ink-preferred",
+  "card_type": "Ink Business Preferred\u00ae Credit Card",
+  "company_name": "Chase",
+  "annual_fee": 95,
+  "benefits": [
+    {
+      "name": "Cell phone protection claims",
+      "description": "Coverage for damaged or stolen phones purchased on the card (max $600 per claim).",
+      "frequency": "yearly",
+      "type": "incremental",
+      "value": 600
+    },
+    {
+      "name": "Shipping purchase credits",
+      "description": "Track savings from UPS, USPS, and FedEx purchases credited back by promotions.",
+      "frequency": "yearly",
+      "type": "cumulative"
+    },
+    {
+      "name": "Travel protections",
+      "description": "Trip cancellation and delay coverage valued as a one-time yearly benefit.",
+      "frequency": "yearly",
+      "type": "standard",
+      "value": 150
+    }
+  ]
+}

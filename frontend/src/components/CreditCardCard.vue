@@ -14,17 +14,26 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['add-benefit', 'toggle-benefit', 'delete-benefit', 'delete-card'])
+const emit = defineEmits([
+  'add-benefit',
+  'toggle-benefit',
+  'delete-benefit',
+  'delete-card',
+  'add-redemption',
+  'view-history'
+])
 
 const benefitModalOpen = ref(false)
 const benefitsExpanded = ref(true)
 
 const defaultFrequency = computed(() => props.frequencies[0] || 'monthly')
+const benefitTypes = ['standard', 'incremental', 'cumulative']
 
 const form = reactive({
   name: '',
   description: '',
   frequency: defaultFrequency.value,
+  type: 'standard',
   value: '',
   expiration_date: ''
 })
@@ -37,6 +46,15 @@ watch(
     }
   },
   { immediate: true }
+)
+
+watch(
+  () => form.type,
+  (type) => {
+    if (type === 'cumulative') {
+      form.value = ''
+    }
+  }
 )
 
 const baseline = computed(() =>
@@ -62,12 +80,16 @@ function resetForm() {
   form.name = ''
   form.description = ''
   form.frequency = defaultFrequency.value
+  form.type = 'standard'
   form.value = ''
   form.expiration_date = ''
 }
 
 function submitForm() {
-  if (!form.name || !form.value) {
+  if (!form.name) {
+    return
+  }
+  if (form.type !== 'cumulative' && !form.value) {
     return
   }
   emit('add-benefit', {
@@ -76,7 +98,8 @@ function submitForm() {
       name: form.name,
       description: form.description || null,
       frequency: form.frequency,
-      value: Number(form.value),
+      type: form.type,
+      value: form.type === 'cumulative' ? undefined : Number(form.value),
       expiration_date: form.expiration_date || null
     }
   })
@@ -150,6 +173,8 @@ function toggleBenefits() {
             :benefit="benefit"
             @toggle="(value) => emit('toggle-benefit', { id: benefit.id, value })"
             @delete="emit('delete-benefit', benefit.id)"
+            @add-redemption="emit('add-redemption', benefit)"
+            @view-history="emit('view-history', benefit)"
           />
         </div>
         <p v-else class="empty-state empty-benefits">
@@ -170,10 +195,30 @@ function toggleBenefits() {
       <form @submit.prevent="submitForm">
         <div class="field-group">
           <input v-model="form.name" type="text" placeholder="Benefit name" required />
-          <input v-model="form.value" type="number" min="0" step="0.01" placeholder="Value" required />
+          <select v-model="form.type">
+            <option v-for="option in benefitTypes" :key="option" :value="option">
+              {{ option.charAt(0).toUpperCase() + option.slice(1) }}
+            </option>
+          </select>
         </div>
         <textarea v-model="form.description" rows="3" placeholder="Description (optional)"></textarea>
         <div class="field-group">
+          <input
+            v-if="form.type !== 'cumulative'"
+            v-model="form.value"
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="Value"
+            :required="form.type !== 'cumulative'"
+          />
+          <input
+            v-else
+            class="read-only-field"
+            type="text"
+            value="Tracked through redemptions"
+            disabled
+          />
           <select v-model="form.frequency">
             <option v-for="option in frequencies" :key="option" :value="option">
               {{ option.charAt(0).toUpperCase() + option.slice(1) }}
@@ -181,6 +226,9 @@ function toggleBenefits() {
           </select>
           <input v-model="form.expiration_date" type="date" />
         </div>
+        <p v-if="form.type === 'cumulative'" class="helper-text">
+          Cumulative benefits build value as you add redemptions.
+        </p>
         <div class="modal-actions">
           <button class="primary-button secondary" type="button" @click="closeBenefitModal">
             Cancel
@@ -226,5 +274,20 @@ function toggleBenefits() {
 strong {
   font-weight: 700;
   color: #0f172a;
+}
+
+.read-only-field {
+  background-color: rgba(148, 163, 184, 0.15);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  color: #475569;
+  padding: 0.5rem 0.75rem;
+  border-radius: 10px;
+  font-style: italic;
+}
+
+.helper-text {
+  margin: 0.25rem 0 0.75rem;
+  font-size: 0.85rem;
+  color: #475569;
 }
 </style>

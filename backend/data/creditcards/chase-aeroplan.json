@@ -1,0 +1,28 @@
+{
+  "slug": "chase-aeroplan",
+  "card_type": "Aeroplan\u00ae Credit Card",
+  "company_name": "Chase",
+  "annual_fee": 95,
+  "benefits": [
+    {
+      "name": "Maple Leaf Lounge passes",
+      "description": "Two lounge passes deposited after $15k spend.",
+      "frequency": "yearly",
+      "type": "standard",
+      "value": 100
+    },
+    {
+      "name": "Aeroplan statement credit",
+      "description": "$100 credit for Air Canada purchases made on the card.",
+      "frequency": "yearly",
+      "type": "incremental",
+      "value": 100
+    },
+    {
+      "name": "Aeroplan bonuses",
+      "description": "Track milestone rewards and Elite Status boost earnings.",
+      "frequency": "yearly",
+      "type": "cumulative"
+    }
+  ]
+}

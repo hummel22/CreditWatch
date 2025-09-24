@@ -1018,17 +1018,14 @@ onMounted(async () => {
       </nav>
     </aside>
     <main class="app-main">
-      <div class="container">
-        <section class="hero">
-          <h1 class="page-title">CreditWatch</h1>
-          <p class="page-subtitle hero-tagline">
-            Track every card, benefit, and annual fee so you always know if your cards pay for themselves.
-          </p>
-        </section>
+      <section class="hero content-constrained">
+        <p class="page-subtitle hero-tagline">
+          Track every card, benefit, and annual fee so you always know if your cards pay for themselves.
+        </p>
+      </section>
 
       <template v-if="!isAdminView">
-
-        <section class="section-card">
+        <section class="section-card content-constrained">
           <h2 class="section-title">Portfolio overview</h2>
           <div class="summary-row">
             <span>Total annual fees: <strong>${{ totals.annualFees.toFixed(2) }}</strong></span>
@@ -1038,13 +1035,15 @@ onMounted(async () => {
           </div>
         </section>
 
-        <section>
-          <h2 class="section-title">Your cards</h2>
-          <p v-if="loading" class="empty-state">Loading your cards...</p>
-          <p v-else-if="!cards.length" class="empty-state">
-            No cards yet. Add your first credit card to begin tracking benefits.
-          </p>
-          <div v-else>
+        <section class="cards-section">
+          <div class="content-constrained">
+            <h2 class="section-title">Your cards</h2>
+            <p v-if="loading" class="empty-state">Loading your cards...</p>
+            <p v-else-if="!cards.length" class="empty-state">
+              No cards yet. Add your first credit card to begin tracking benefits.
+            </p>
+          </div>
+          <div v-if="!loading && cards.length" class="cards-grid-wrapper">
             <CreditCardList
               :cards="cards"
               :frequencies="frequencies"
@@ -1064,7 +1063,7 @@ onMounted(async () => {
       </template>
 
       <template v-else>
-        <section class="section-card admin-board">
+        <section class="section-card admin-board content-constrained">
           <div class="section-header">
             <div>
               <h2 class="section-title">Preconfigured cards</h2>
@@ -1136,11 +1135,12 @@ onMounted(async () => {
         </section>
       </template>
 
-      <p v-if="error" class="empty-state error-message">
-        {{ error }}
-      </p>
-    </div>
-  </main>
+      <div v-if="error" class="content-constrained">
+        <p class="empty-state error-message">
+          {{ error }}
+        </p>
+      </div>
+    </main>
   </div>
 
   <BaseModal :open="showCardModal" title="Add a credit card" @close="closeCardModal">

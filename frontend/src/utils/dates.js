@@ -164,10 +164,15 @@ export function computeFrequencyWindows(cycle, frequency) {
   let index = 1
   while (cursor < cycle.end) {
     const windowEnd = addMonths(cursor, monthsPerWindow)
+    const clampedEnd = windowEnd < cycle.end ? windowEnd : cycle.end
+    const label =
+      frequency === 'monthly'
+        ? new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(cursor)
+        : `${frequency === 'quarterly' ? 'Quarter' : 'Half'} ${index} · ${formatRangeLabel(cursor, clampedEnd)}`
     windows.push({
       start: cursor,
-      end: windowEnd < cycle.end ? windowEnd : cycle.end,
-      label: `${frequency === 'monthly' ? 'Month' : frequency === 'quarterly' ? 'Quarter' : 'Half'} ${index} · ${formatRangeLabel(cursor, windowEnd < cycle.end ? windowEnd : cycle.end)}`
+      end: clampedEnd,
+      label
     })
     cursor = windowEnd
     index += 1

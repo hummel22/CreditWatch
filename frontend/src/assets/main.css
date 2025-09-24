@@ -5,6 +5,7 @@
   color: #0f172a;
   background-color: #f1f5f9;
   --benefit-card-min-height: 220px;
+  --page-padding: clamp(1rem, 4vw, 3rem);
 }
 
 * {
@@ -34,9 +35,8 @@ body {
 }
 
 .header-inner {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 1.5rem;
+  width: 100%;
+  padding: 0 var(--page-padding);
 }
 
 .header-bar {
@@ -146,6 +146,7 @@ body {
 
 .app-main {
   flex: 1;
+  padding: 2rem var(--page-padding) 4rem;
 }
 
 a {
@@ -229,10 +230,10 @@ textarea {
   font: inherit;
 }
 
-.container {
+.content-constrained {
   margin: 0 auto;
-  padding: 2rem 1.5rem 4rem;
   max-width: 1200px;
+  width: 100%;
 }
 
 .hero {
@@ -255,21 +256,23 @@ textarea {
   background: rgba(254, 242, 242, 0.65);
 }
 
-.page-title {
-  font-size: clamp(1.75rem, 2.5vw + 0.8rem, 2.5rem);
-  font-weight: 700;
-  margin-bottom: 0.15rem;
-  color: #0f172a;
-}
-
 .page-subtitle {
   color: #475569;
   margin-bottom: 2rem;
 }
 
+.cards-section {
+  margin-top: 2rem;
+}
+
+.cards-grid-wrapper {
+  margin: 1.5rem auto 0;
+  width: 100%;
+}
+
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(600px, 1fr));
   gap: 1.5rem;
   align-items: stretch;
 }

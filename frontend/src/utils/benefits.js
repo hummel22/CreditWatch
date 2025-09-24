@@ -2,11 +2,11 @@ import { parseDate } from './dates'
 
 function getExpirationTime(benefit) {
   if (!benefit || !benefit.expiration_date) {
-    return Number.NEGATIVE_INFINITY
+    return Number.POSITIVE_INFINITY
   }
   const parsed = parseDate(benefit.expiration_date)
   if (!(parsed instanceof Date) || Number.isNaN(parsed.getTime())) {
-    return Number.NEGATIVE_INFINITY
+    return Number.POSITIVE_INFINITY
   }
   return parsed.getTime()
 }
@@ -44,7 +44,7 @@ export function compareBenefits(a, b) {
     const nameB = b?.name ?? ''
     return nameA.localeCompare(nameB)
   }
-  return timeB - timeA
+  return timeA - timeB
 }
 
 export function sortBenefits(benefits) {

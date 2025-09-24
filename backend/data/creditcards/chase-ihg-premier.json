@@ -6,10 +6,10 @@
   "benefits": [
     {
       "name": "Free night certificate",
-      "description": "Track the annual free night certificate (up to 40k points).",
+      "description": "Log the redemption value of the annual free night certificate (up to 40k points).",
       "frequency": "yearly",
-      "type": "standard",
-      "value": 200
+      "type": "cumulative",
+      "expected_value": 250
     },
     {
       "name": "IHG statement credits",
@@ -19,8 +19,21 @@
       "value": 100
     },
     {
+      "name": "United TravelBank credit",
+      "description": "$25 in United TravelBank cash deposited twice per year after linking accounts.",
+      "frequency": "semiannual",
+      "type": "incremental",
+      "value": 50
+    },
+    {
       "name": "IHG promotions",
       "description": "Log savings from targeted IHG offers and promotions.",
+      "frequency": "yearly",
+      "type": "cumulative"
+    },
+    {
+      "name": "Fourth night free savings",
+      "description": "Track how much you save from the cardholder-only fourth night free award benefit.",
       "frequency": "yearly",
       "type": "cumulative"
     },

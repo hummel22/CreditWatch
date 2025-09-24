@@ -19,6 +19,19 @@
       "value": 100
     },
     {
+      "name": "Uber One membership",
+      "description": "Complimentary Uber One membership (through 11/14/2024) with automatic monthly statement credits.",
+      "frequency": "yearly",
+      "type": "standard",
+      "value": 120
+    },
+    {
+      "name": "Lounge visits",
+      "description": "Track the value of Priority Pass™, Plaza Premium, and Capital One Lounge access for you and authorized users.",
+      "frequency": "yearly",
+      "type": "cumulative"
+    },
+    {
       "name": "Cell phone protection",
       "description": "Coverage for damaged or stolen phones when you pay your bill with the card.",
       "frequency": "yearly",

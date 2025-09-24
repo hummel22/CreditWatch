@@ -24,6 +24,13 @@ class BenefitType(str, Enum):
     cumulative = "cumulative"
 
 
+class YearTrackingMode(str, Enum):
+    """How a card groups activity across years for history calculations."""
+
+    calendar = "calendar"
+    anniversary = "anniversary"
+
+
 class CreditCard(SQLModel, table=True):
     """Credit card stored in the system."""
 
@@ -38,6 +45,10 @@ class CreditCard(SQLModel, table=True):
     account_name: str = Field(index=True, description="Account holder or user account identifier")
     annual_fee: float = Field(ge=0)
     fee_due_date: date
+    year_tracking_mode: YearTrackingMode = Field(
+        default=YearTrackingMode.calendar,
+        description="How the card's history windows are calculated",
+    )
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class Benefit(SQLModel, table=True):

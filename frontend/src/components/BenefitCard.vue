@@ -8,7 +8,14 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['toggle', 'delete', 'add-redemption', 'view-history'])
+const emit = defineEmits([
+  'toggle',
+  'delete',
+  'add-redemption',
+  'view-history',
+  'edit',
+  'view-windows'
+])
 
 const typeLabel = computed(() => {
   const type = props.benefit.type || 'standard'
@@ -58,7 +65,13 @@ const redemptionSummary = computed(() => {
   return `Worth $${props.benefit.value.toFixed(2)}`
 })
 
-const showHistoryButton = computed(() => props.benefit.type !== 'standard' || props.benefit.redemption_count > 0)
+const showHistoryButton = computed(
+  () => props.benefit.type !== 'standard' || props.benefit.redemption_count > 0
+)
+
+const isRecurringBenefit = computed(() =>
+  ['monthly', 'quarterly', 'semiannual'].includes(props.benefit.frequency)
+)
 </script>
 
 <template>
@@ -69,8 +82,35 @@ const showHistoryButton = computed(() => props.benefit.type !== 'standard' || pr
         <div class="benefit-type">{{ typeLabel }}</div>
         <div class="benefit-frequency">{{ benefit.frequency }}</div>
       </div>
-      <div class="tag" :class="statusTag.tone">
-        <span>{{ statusTag.label }}</span>
+      <div class="benefit-header__meta">
+        <div class="tag" :class="statusTag.tone">
+          <span>{{ statusTag.label }}</span>
+        </div>
+        <div class="benefit-icons">
+          <button
+            v-if="isRecurringBenefit"
+            class="icon-button ghost"
+            type="button"
+            @click="emit('view-windows', benefit)"
+            title="View recurring history"
+          >
+            <span aria-hidden="true">📊</span>
+            <span class="sr-only">View recurring history</span>
+          </button>
+          <button
+            class="icon-button ghost"
+            type="button"
+            @click="emit('edit', benefit)"
+            title="Edit benefit"
+          >
+            <span aria-hidden="true">✏️</span>
+            <span class="sr-only">Edit benefit</span>
+          </button>
+          <button class="icon-button danger" type="button" @click="emit('delete')" title="Remove benefit">
+            <span aria-hidden="true">🗑️</span>
+            <span class="sr-only">Remove benefit</span>
+          </button>
+        </div>
       </div>
     </header>
 
@@ -92,17 +132,21 @@ const showHistoryButton = computed(() => props.benefit.type !== 'standard' || pr
           v-if="benefit.type === 'standard'"
           class="primary-button secondary"
           type="button"
+          :aria-pressed="benefit.is_used"
+          title="Mark benefit as done"
           @click="emit('toggle', !benefit.is_used)"
         >
-          {{ benefit.is_used ? 'Reset' : 'Mark used' }}
+          Done
         </button>
         <button
           v-if="benefit.type !== 'standard'"
-          class="primary-button secondary"
+          class="icon-button accent"
           type="button"
           @click="emit('add-redemption', benefit)"
+          title="Add redemption"
         >
-          Add redemption
+          <span aria-hidden="true">+</span>
+          <span class="sr-only">Add redemption</span>
         </button>
         <button
           v-if="showHistoryButton"
@@ -112,18 +156,21 @@ const showHistoryButton = computed(() => props.benefit.type !== 'standard' || pr
         >
           View history
         </button>
-        <button class="primary-button danger" type="button" @click="emit('delete')">
-          Remove
-        </button>
       </div>
     </footer>
   </article>
 </template>
 
 <style scoped>
+.benefit-icons {
+  display: flex;
+  gap: 0.35rem;
+}
+
 .benefit-actions {
   display: flex;
   gap: 0.5rem;
+  align-items: center;
 }
 
 .benefit-expiration {
@@ -136,6 +183,12 @@ const showHistoryButton = computed(() => props.benefit.type !== 'standard' || pr
   font-size: 0.75rem;
   color: #0ea5e9;
   font-weight: 600;
+}
+
+.benefit-header__meta {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
 }
 
 .benefit-progress {

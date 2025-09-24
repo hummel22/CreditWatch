@@ -6,7 +6,7 @@ from typing import List, Optional
 from pydantic import ConfigDict, model_validator
 from sqlmodel import Field, SQLModel
 
-from .models import BenefitFrequency, BenefitType
+from .models import BenefitFrequency, BenefitType, YearTrackingMode
 
 
 class BenefitBase(SQLModel):
@@ -75,6 +75,12 @@ class BenefitRedemptionRead(BenefitRedemptionBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class BenefitRedemptionUpdate(SQLModel):
+    label: Optional[str] = None
+    amount: Optional[float] = Field(default=None, gt=0)
+    occurred_on: Optional[date] = None
+
+
 class CreditCardBase(SQLModel):
     card_name: str
     company_name: str
@@ -82,6 +88,7 @@ class CreditCardBase(SQLModel):
     account_name: str
     annual_fee: float = Field(ge=0)
     fee_due_date: date
+    year_tracking_mode: YearTrackingMode = Field(default=YearTrackingMode.calendar)
 
 
 class CreditCardCreate(CreditCardBase):
@@ -95,6 +102,7 @@ class CreditCardUpdate(SQLModel):
     account_name: Optional[str] = None
     annual_fee: Optional[float] = Field(default=None, ge=0)
     fee_due_date: Optional[date] = None
+    year_tracking_mode: Optional[YearTrackingMode] = None
 
 
 class CreditCardRead(CreditCardBase):

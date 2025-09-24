@@ -2,6 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import BaseModal from './BaseModal.vue'
 import BenefitCard from './BenefitCard.vue'
+import { computeCardCycle, formatDateInput } from '../utils/dates'
 
 const props = defineProps({
   card: {
@@ -20,14 +21,24 @@ const emit = defineEmits([
   'delete-benefit',
   'delete-card',
   'add-redemption',
-  'view-history'
+  'view-history',
+  'update-benefit',
+  'edit-card',
+  'view-card-history',
+  'view-benefit-windows'
 ])
 
 const benefitModalOpen = ref(false)
 const benefitsExpanded = ref(true)
+const formMode = ref('create')
+const editingBenefitId = ref(null)
+const autoExpiration = ref(true)
 
 const defaultFrequency = computed(() => props.frequencies[0] || 'monthly')
 const benefitTypes = ['standard', 'incremental', 'cumulative']
+const defaultYearAlignment = computed(() =>
+  props.card.year_tracking_mode === 'anniversary' ? 'anniversary' : 'calendar'
+)
 
 const form = reactive({
   name: '',
@@ -35,7 +46,32 @@ const form = reactive({
   frequency: defaultFrequency.value,
   type: 'standard',
   value: '',
-  expiration_date: ''
+  expiration_date: '',
+  yearlyAlignment: defaultYearAlignment.value
+})
+
+const currentCycle = computed(() => computeCardCycle(props.card))
+
+const cycleSubtitle = computed(() =>
+  currentCycle.value.mode === 'anniversary' ? 'AF year' : 'Calendar year'
+)
+
+const cycleCoverage = computed(() => {
+  const start = new Date(currentCycle.value.start)
+  const end = new Date(currentCycle.value.end)
+  end.setDate(end.getDate() - 1)
+  const sameYear = start.getFullYear() === end.getFullYear()
+  const startFormatter = new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: sameYear ? undefined : 'numeric'
+  })
+  const endFormatter = new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  })
+  return `${startFormatter.format(start)} – ${endFormatter.format(end)}`
 })
 
 watch(
@@ -53,6 +89,35 @@ watch(
   (type) => {
     if (type === 'cumulative') {
       form.value = ''
+    }
+  }
+)
+
+watch(
+  () => props.card.year_tracking_mode,
+  () => {
+    if (formMode.value === 'create') {
+      form.yearlyAlignment = defaultYearAlignment.value
+      applyFrequencyDefaults()
+    }
+  }
+)
+
+watch(
+  () => form.frequency,
+  (frequency) => {
+    if (frequency !== 'yearly') {
+      form.yearlyAlignment = defaultYearAlignment.value
+    }
+    applyFrequencyDefaults()
+  }
+)
+
+watch(
+  () => form.yearlyAlignment,
+  () => {
+    if (form.frequency === 'yearly') {
+      applyFrequencyDefaults()
     }
   }
 )
@@ -76,6 +141,38 @@ const netStatus = computed(() => {
     : { tone: 'warning', label: `Short by $${Math.abs(difference).toFixed(2)}` }
 })
 
+function computeDefaultExpiration(frequency) {
+  const today = new Date()
+  if (frequency === 'monthly') {
+    return formatDateInput(new Date(today.getFullYear(), today.getMonth() + 1, 0))
+  }
+  if (frequency === 'quarterly') {
+    const startMonth = Math.floor(today.getMonth() / 3) * 3
+    return formatDateInput(new Date(today.getFullYear(), startMonth + 3, 0))
+  }
+  if (frequency === 'semiannual') {
+    const endMonth = today.getMonth() < 6 ? 6 : 12
+    return formatDateInput(new Date(today.getFullYear(), endMonth, 0))
+  }
+  if (frequency === 'yearly') {
+    if (form.yearlyAlignment === 'anniversary') {
+      const end = new Date(currentCycle.value.end)
+      end.setDate(end.getDate() - 1)
+      return formatDateInput(end)
+    }
+    const end = new Date(today.getFullYear(), 11, 31)
+    return formatDateInput(end)
+  }
+  return ''
+}
+
+function applyFrequencyDefaults() {
+  if (!autoExpiration.value) {
+    return
+  }
+  form.expiration_date = computeDefaultExpiration(form.frequency)
+}
+
 function resetForm() {
   form.name = ''
   form.description = ''
@@ -83,6 +180,62 @@ function resetForm() {
   form.type = 'standard'
   form.value = ''
   form.expiration_date = ''
+  form.yearlyAlignment = defaultYearAlignment.value
+  autoExpiration.value = true
+  applyFrequencyDefaults()
+}
+
+function handleExpirationInput() {
+  autoExpiration.value = false
+}
+
+function openNewBenefitModal() {
+  formMode.value = 'create'
+  editingBenefitId.value = null
+  resetForm()
+  benefitModalOpen.value = true
+}
+
+function populateForm(benefit) {
+  formMode.value = 'edit'
+  editingBenefitId.value = benefit.id
+  autoExpiration.value = false
+  form.name = benefit.name
+  form.description = benefit.description || ''
+  form.frequency = benefit.frequency
+  form.type = benefit.type || 'standard'
+  form.value =
+    benefit.type === 'cumulative' || benefit.value === null
+      ? ''
+      : String(benefit.value)
+  form.expiration_date = benefit.expiration_date || ''
+  form.yearlyAlignment = defaultYearAlignment.value
+  if (benefit.frequency === 'yearly' && benefit.expiration_date) {
+    const expirationDate = new Date(`${benefit.expiration_date}T00:00:00`)
+    const cycleAtExpiration = computeCardCycle(props.card, expirationDate)
+    const cycleEnd = new Date(cycleAtExpiration.end)
+    cycleEnd.setDate(cycleEnd.getDate() - 1)
+    const cycleEndString = formatDateInput(cycleEnd)
+    const calendarEnd = new Date(expirationDate.getFullYear(), 11, 31)
+    const calendarEndString = formatDateInput(calendarEnd)
+    if (benefit.expiration_date === cycleEndString) {
+      form.yearlyAlignment = 'anniversary'
+    } else if (benefit.expiration_date === calendarEndString) {
+      form.yearlyAlignment = 'calendar'
+    }
+  }
+  benefitModalOpen.value = true
+}
+
+function closeBenefitModal() {
+  benefitModalOpen.value = false
+  formMode.value = 'create'
+  editingBenefitId.value = null
+  resetForm()
+}
+
+function toggleBenefits() {
+  benefitsExpanded.value = !benefitsExpanded.value
 }
 
 function submitForm() {
@@ -92,38 +245,56 @@ function submitForm() {
   if (form.type !== 'cumulative' && !form.value) {
     return
   }
-  emit('add-benefit', {
-    cardId: props.card.id,
-    payload: {
-      name: form.name,
-      description: form.description || null,
-      frequency: form.frequency,
-      type: form.type,
-      value: form.type === 'cumulative' ? undefined : Number(form.value),
-      expiration_date: form.expiration_date || null
-    }
-  })
+  const payload = {
+    name: form.name,
+    description: form.description || null,
+    frequency: form.frequency,
+    type: form.type,
+    expiration_date: form.expiration_date || null
+  }
+  if (form.type !== 'cumulative') {
+    payload.value = Number(form.value)
+  }
+  if (formMode.value === 'edit' && editingBenefitId.value) {
+    emit('update-benefit', {
+      cardId: props.card.id,
+      benefitId: editingBenefitId.value,
+      payload
+    })
+  } else {
+    emit('add-benefit', {
+      cardId: props.card.id,
+      payload
+    })
+  }
   closeBenefitModal()
 }
 
-function openBenefitModal() {
-  benefitModalOpen.value = true
+function handleBenefitEdit(benefit) {
+  populateForm(benefit)
 }
 
-function closeBenefitModal() {
-  benefitModalOpen.value = false
-  resetForm()
+function handleBenefitHistory(benefit) {
+  emit('view-benefit-windows', { card: props.card, benefit })
 }
 
-function toggleBenefits() {
-  benefitsExpanded.value = !benefitsExpanded.value
+function handleCardHistory() {
+  emit('view-card-history', props.card)
+}
+
+function handleCardEdit() {
+  emit('edit-card', props.card)
+}
+
+function handleCardDelete() {
+  emit('delete-card', props.card.id)
 }
 </script>
 
 <template>
   <article class="card">
     <header class="card-header">
-      <div>
+      <div class="card-header__info">
         <div class="card-title">{{ card.card_name }}</div>
         <div class="card-subtitle">
           <span v-if="card.company_name" class="company-pill">{{ card.company_name }}</span>
@@ -131,8 +302,29 @@ function toggleBenefits() {
           <span>•</span>
           <span>{{ card.account_name }}</span>
         </div>
+        <div class="card-due">Fee due {{ new Date(card.fee_due_date).toLocaleDateString() }}</div>
       </div>
-      <span class="card-meta">Fee due {{ new Date(card.fee_due_date).toLocaleDateString() }}</span>
+      <div class="card-header__meta">
+        <div class="card-cycle">
+          <div class="card-cycle__label">{{ cycleSubtitle }}</div>
+          <div class="card-cycle__value">{{ currentCycle.label }}</div>
+          <div class="card-cycle__range">{{ cycleCoverage }}</div>
+        </div>
+        <div class="card-toolbar">
+          <button class="icon-button ghost" type="button" @click="handleCardHistory" title="View card history">
+            <span aria-hidden="true">📈</span>
+            <span class="sr-only">View card history</span>
+          </button>
+          <button class="icon-button ghost" type="button" @click="handleCardEdit" title="Edit card">
+            <span aria-hidden="true">✏️</span>
+            <span class="sr-only">Edit card</span>
+          </button>
+          <button class="icon-button danger" type="button" @click="handleCardDelete" title="Remove card">
+            <span aria-hidden="true">🗑️</span>
+            <span class="sr-only">Remove card</span>
+          </button>
+        </div>
+      </div>
     </header>
 
     <section>
@@ -152,7 +344,7 @@ function toggleBenefits() {
       <div class="section-header">
         <h3 class="section-title">Benefits</h3>
         <div class="section-actions">
-          <button class="primary-button secondary small" type="button" @click="openBenefitModal">
+          <button class="primary-button secondary small" type="button" @click="openNewBenefitModal">
             Add benefit
           </button>
           <button
@@ -173,25 +365,25 @@ function toggleBenefits() {
             :benefit="benefit"
             @toggle="(value) => emit('toggle-benefit', { id: benefit.id, value })"
             @delete="emit('delete-benefit', benefit.id)"
-            @add-redemption="emit('add-redemption', benefit)"
-            @view-history="emit('view-history', benefit)"
+            @add-redemption="emit('add-redemption', { card, benefit })"
+            @view-history="emit('view-history', { card, benefit })"
+            @edit="handleBenefitEdit"
+            @view-windows="handleBenefitHistory"
           />
         </div>
         <p v-else class="empty-state empty-benefits">
           No benefits tracked yet.
-          <button class="link-button inline" type="button" @click="openBenefitModal">Add one now</button>
+          <button class="link-button inline" type="button" @click="openNewBenefitModal">Add one now</button>
           .
         </p>
       </div>
     </section>
 
-    <footer class="card-footer">
-      <button class="primary-button danger" type="button" @click="emit('delete-card', card.id)">
-        Remove card
-      </button>
-    </footer>
-
-    <BaseModal :open="benefitModalOpen" title="Add a benefit" @close="closeBenefitModal">
+    <BaseModal
+      :open="benefitModalOpen"
+      :title="formMode === 'edit' ? 'Edit benefit' : 'Add a benefit'"
+      @close="closeBenefitModal"
+    >
       <form @submit.prevent="submitForm">
         <div class="field-group">
           <input v-model="form.name" type="text" placeholder="Benefit name" required />
@@ -224,7 +416,17 @@ function toggleBenefits() {
               {{ option.charAt(0).toUpperCase() + option.slice(1) }}
             </option>
           </select>
-          <input v-model="form.expiration_date" type="date" />
+          <input v-model="form.expiration_date" type="date" @input="handleExpirationInput" />
+        </div>
+        <div v-if="form.frequency === 'yearly'" class="yearly-options">
+          <label class="radio-option">
+            <input v-model="form.yearlyAlignment" type="radio" value="calendar" />
+            <span>Calendar year</span>
+          </label>
+          <label class="radio-option">
+            <input v-model="form.yearlyAlignment" type="radio" value="anniversary" />
+            <span>Align with AF year</span>
+          </label>
         </div>
         <p v-if="form.type === 'cumulative'" class="helper-text">
           Cumulative benefits build value as you add redemptions.
@@ -241,12 +443,6 @@ function toggleBenefits() {
 </template>
 
 <style scoped>
-.card-footer {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 0.75rem;
-}
-
 .card-subtitle {
   display: flex;
   align-items: center;
@@ -254,6 +450,68 @@ function toggleBenefits() {
   flex-wrap: wrap;
   color: #475569;
   font-size: 0.9rem;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.card-header__info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.card-due {
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.card-header__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.card-cycle {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.15rem;
+}
+
+.card-cycle__label {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.72rem;
+  color: #6366f1;
+  font-weight: 600;
+}
+
+.card-cycle__value {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.card-cycle__range {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.card-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.card-toolbar .icon-button {
+  font-size: 1.1rem;
 }
 
 .company-pill {
@@ -283,6 +541,25 @@ strong {
   padding: 0.5rem 0.75rem;
   border-radius: 10px;
   font-style: italic;
+}
+
+.yearly-options {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.25rem 0 0.5rem;
+}
+
+.radio-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  color: #475569;
+}
+
+.radio-option input {
+  accent-color: #6366f1;
 }
 
 .helper-text {

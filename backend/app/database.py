@@ -18,6 +18,7 @@ def init_db() -> None:
     SQLModel.metadata.create_all(engine)
     ensure_company_name_column()
     ensure_benefit_type_column()
+    ensure_card_year_tracking_column()
 
 
 def ensure_company_name_column() -> None:
@@ -47,6 +48,19 @@ def ensure_benefit_type_column() -> None:
         if "value" not in existing_columns:
             connection.exec_driver_sql(
                 "ALTER TABLE benefit ADD COLUMN value FLOAT NOT NULL DEFAULT 0"
+            )
+
+
+def ensure_card_year_tracking_column() -> None:
+    """Ensure credit cards store the preferred year tracking mode."""
+
+    with engine.connect() as connection:
+        existing_columns = {
+            row[1] for row in connection.exec_driver_sql("PRAGMA table_info(creditcard)")
+        }
+        if "year_tracking_mode" not in existing_columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE creditcard ADD COLUMN year_tracking_mode VARCHAR NOT NULL DEFAULT 'calendar'"
             )
 
 

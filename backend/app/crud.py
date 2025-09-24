@@ -10,6 +10,7 @@ from .models import Benefit, BenefitRedemption, BenefitType, CreditCard
 from .schemas import (
     BenefitCreate,
     BenefitRedemptionCreate,
+    BenefitRedemptionUpdate,
     BenefitUpdate,
     BenefitUsageUpdate,
     CreditCardCreate,
@@ -121,6 +122,32 @@ def create_benefit_redemption(
     session.refresh(redemption)
     sync_incremental_usage_status(session, benefit)
     return redemption
+
+
+def get_benefit_redemption(
+    session: Session, redemption_id: int
+) -> Optional[BenefitRedemption]:
+    return session.get(BenefitRedemption, redemption_id)
+
+
+def update_benefit_redemption(
+    session: Session, redemption: BenefitRedemption, payload: BenefitRedemptionUpdate
+) -> BenefitRedemption:
+    update_data = payload.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(redemption, key, value)
+    session.add(redemption)
+    session.commit()
+    session.refresh(redemption)
+    sync_incremental_usage_status(session, redemption.benefit_id)
+    return redemption
+
+
+def delete_benefit_redemption(session: Session, redemption: BenefitRedemption) -> None:
+    benefit_id = redemption.benefit_id
+    session.delete(redemption)
+    session.commit()
+    sync_incremental_usage_status(session, benefit_id)
 
 
 def list_benefit_redemptions(session: Session, benefit_id: int) -> List[BenefitRedemption]:

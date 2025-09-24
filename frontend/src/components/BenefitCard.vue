@@ -173,7 +173,7 @@ const annualRedeemed = computed(() => Number(props.benefit.cycle_redemption_tota
               <span>{{ statusTag.label }}</span>
             </div>
             <span class="benefit-year-total">
-              Redeemed this year: <strong>${{ annualRedeemed.toFixed(2) }}</strong>
+              Total: <strong>${{ annualRedeemed.toFixed(2) }}</strong>
             </span>
           </div>
         </div>
@@ -365,6 +365,7 @@ const annualRedeemed = computed(() => Number(props.benefit.cycle_redemption_tota
   gap: 0.2rem;
   text-align: right;
   min-width: 0;
+  margin-left: auto;
 }
 
 .benefit-status .tag {

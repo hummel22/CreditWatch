@@ -397,14 +397,33 @@ def _format_range_label(window_start: date, window_end: date) -> str:
     return f"{start_label} {window_start.year} – {end_label} {inclusive_end.year}"
 
 
-def _window_prefix(frequency: BenefitFrequency, index: int) -> str:
+def _format_frequency_label(
+    frequency: BenefitFrequency,
+    index: int,
+    window_start: date,
+    window_end: date,
+    is_calendar_year: bool,
+) -> str:
+    inclusive_end = window_end - timedelta(days=1)
     if frequency == BenefitFrequency.monthly:
-        return f"Month {index}"
+        if is_calendar_year:
+            return window_start.strftime("%b")
+        return f"({window_start.strftime('%b %d')} - {inclusive_end.strftime('%b %d')})"
     if frequency == BenefitFrequency.quarterly:
-        return f"Quarter {index}"
+        prefix = f"Q{index}"
+        if is_calendar_year:
+            return f"({prefix}: {window_start.strftime('%b')} - {inclusive_end.strftime('%b')})"
+        return f"({prefix}: {window_start.strftime('%b %d')} - {inclusive_end.strftime('%b %d')})"
     if frequency == BenefitFrequency.semiannual:
-        return f"Half {index}"
-    return "Year"
+        prefix = f"H{index}"
+        if is_calendar_year:
+            return f"({prefix}: {window_start.strftime('%b')} - {inclusive_end.strftime('%b')})"
+        return f"({prefix}: {window_start.strftime('%b %d')} - {inclusive_end.strftime('%b %d')})"
+    if frequency == BenefitFrequency.yearly:
+        if is_calendar_year:
+            return str(window_start.year)
+        return f"({window_start.strftime('%m/%d/%Y')} - {inclusive_end.strftime('%m/%d/%Y')})"
+    return _format_range_label(window_start, window_end)
 
 
 def _current_frequency_window(
@@ -412,6 +431,8 @@ def _current_frequency_window(
     cycle_end: date,
     frequency: BenefitFrequency,
     reference: date | None = None,
+    *,
+    is_calendar_year: bool = False,
 ) -> Tuple[date, date, str, int]:
     reference_date = reference or date.today()
     months_map = {
@@ -422,7 +443,7 @@ def _current_frequency_window(
     }
     months = months_map.get(frequency)
     if not months:
-        label = f"{_window_prefix(frequency, 1)} · {_format_range_label(cycle_start, cycle_end)}"
+        label = _format_range_label(cycle_start, cycle_end)
         return cycle_start, cycle_end, label, 1
     windows: List[Tuple[date, date, str, int]] = []
     index = 1
@@ -431,12 +452,16 @@ def _current_frequency_window(
         window_end = _add_months(cursor, months)
         if window_end > cycle_end:
             window_end = cycle_end
-        label = f"{_window_prefix(frequency, index)} · {_format_range_label(cursor, window_end)}"
+        label = _format_frequency_label(
+            frequency, index, cursor, window_end, is_calendar_year
+        )
         windows.append((cursor, window_end, label, index))
         cursor = window_end
         index += 1
     if not windows:
-        label = f"{_window_prefix(frequency, 1)} · {_format_range_label(cycle_start, cycle_end)}"
+        label = _format_frequency_label(
+            frequency, 1, cycle_start, cycle_end, is_calendar_year
+        )
         return cycle_start, cycle_end, label, 1
     for window_start, window_end, label, idx in windows:
         if window_start <= reference_date < window_end:
@@ -459,9 +484,13 @@ def gather_benefit_metrics(
         frequency_groups.setdefault(benefit.frequency, []).append(benefit.id)
     window_totals: Dict[BenefitFrequency, Dict[int, Tuple[float, int]]] = {}
     window_info: Dict[BenefitFrequency, Dict[str, object]] = {}
+    is_calendar_year = card.year_tracking_mode == YearTrackingMode.calendar
     for frequency in BenefitFrequency:
         window_start, window_end, label, _ = _current_frequency_window(
-            cycle_start, cycle_end, frequency
+            cycle_start,
+            cycle_end,
+            frequency,
+            is_calendar_year=is_calendar_year,
         )
         window_info[frequency] = {
             "start": window_start,

@@ -18,6 +18,7 @@ const frequencies = ref(['monthly', 'quarterly', 'semiannual', 'yearly'])
 const preconfiguredCards = ref([])
 
 const currentView = ref('dashboard')
+const navDrawerOpen = ref(false)
 const navItems = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'admin', label: 'Admin' }
@@ -29,8 +30,22 @@ function setView(view) {
   currentView.value = view
 }
 
+function toggleNavDrawer() {
+  navDrawerOpen.value = !navDrawerOpen.value
+}
+
+function closeNavDrawer() {
+  navDrawerOpen.value = false
+}
+
+function handleNavSelection(view) {
+  setView(view)
+  closeNavDrawer()
+}
+
 watch(currentView, () => {
   error.value = ''
+  navDrawerOpen.value = false
 })
 
 function resolveDefaultFrequency() {
@@ -447,6 +462,20 @@ async function handleDeleteCard(cardId) {
   }
 }
 
+function resolveDefaultRedemptionAmount(benefit) {
+  if (!benefit || benefit.type === 'cumulative') {
+    return ''
+  }
+  const baseValue = Number(benefit.value ?? 0)
+  if (!Number.isFinite(baseValue) || baseValue <= 0) {
+    return ''
+  }
+  const windowTotal = Number(benefit.current_window_total ?? benefit.cycle_redemption_total ?? 0)
+  const remaining = Math.max(baseValue - windowTotal, 0)
+  const suggested = remaining > 0 ? remaining : baseValue
+  return suggested > 0 ? suggested.toFixed(2) : ''
+}
+
 function handleAddRedemption(payload) {
   const benefit = payload?.benefit || payload
   const cardId = payload?.card?.id || benefit.credit_card_id
@@ -459,7 +488,7 @@ function handleAddRedemption(payload) {
   redemptionModal.benefit = trackedBenefit
   redemptionModal.redemptionId = null
   redemptionModal.label = ''
-  redemptionModal.amount = ''
+  redemptionModal.amount = resolveDefaultRedemptionAmount(trackedBenefit)
   redemptionModal.occurred_on = new Date().toISOString().slice(0, 10)
   redemptionModal.card = card
 }
@@ -926,42 +955,76 @@ onMounted(async () => {
 <template>
   <div class="app-shell">
     <header class="app-header">
-      <div class="container header-bar">
-        <div class="header-brand">
-          <h1 class="page-title">CreditWatch</h1>
-          <p class="brand-tagline">
-            Track every card, benefit, and annual fee so you always know if your cards pay for themselves.
-          </p>
-        </div>
-        <nav class="header-nav">
-          <button
-            v-for="item in navItems"
-            :key="item.id"
-            class="nav-button"
-            type="button"
-            :class="{ active: currentView === item.id }"
-            @click="setView(item.id)"
-          >
-            {{ item.label }}
-          </button>
-        </nav>
-        <div class="header-actions">
-          <button
-            v-if="!isAdminView"
-            class="primary-button"
-            type="button"
-            @click="showCardModal = true"
-          >
-            New card
-          </button>
-          <button v-else class="primary-button" type="button" @click="openAdminCreateModal">
-            New template
-          </button>
+      <div class="header-inner">
+        <div class="header-bar">
+          <div class="header-left">
+            <button
+              class="icon-button ghost nav-toggle"
+              type="button"
+              :aria-expanded="navDrawerOpen"
+              aria-controls="primary-navigation"
+              @click="toggleNavDrawer"
+            >
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                <path stroke-linecap="round" d="M4 6h12M4 10h12M4 14h12" />
+              </svg>
+              <span class="sr-only">Toggle navigation</span>
+            </button>
+            <span class="header-logo">CreditWatch</span>
+          </div>
+          <div class="header-actions">
+            <button
+              v-if="!isAdminView"
+              class="primary-button"
+              type="button"
+              @click="showCardModal = true"
+            >
+              New card
+            </button>
+            <button v-else class="primary-button" type="button" @click="openAdminCreateModal">
+              New template
+            </button>
+          </div>
         </div>
       </div>
     </header>
+    <div v-if="navDrawerOpen" class="nav-drawer-backdrop" @click="closeNavDrawer" aria-hidden="true"></div>
+    <aside
+      id="primary-navigation"
+      class="nav-drawer"
+      :class="{ open: navDrawerOpen }"
+      aria-label="Primary navigation"
+    >
+      <div class="nav-drawer__header">
+        <span class="nav-drawer__title">Menu</span>
+        <button class="icon-button ghost" type="button" @click="closeNavDrawer">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+            <path stroke-linecap="round" d="M5 5l10 10M15 5l-10 10" />
+          </svg>
+          <span class="sr-only">Close navigation</span>
+        </button>
+      </div>
+      <nav class="nav-drawer__nav">
+        <button
+          v-for="item in navItems"
+          :key="item.id"
+          class="nav-button"
+          type="button"
+          :class="{ active: currentView === item.id }"
+          @click="handleNavSelection(item.id)"
+        >
+          {{ item.label }}
+        </button>
+      </nav>
+    </aside>
     <main class="app-main">
       <div class="container">
+        <section class="hero">
+          <h1 class="page-title">CreditWatch</h1>
+          <p class="page-subtitle hero-tagline">
+            Track every card, benefit, and annual fee so you always know if your cards pay for themselves.
+          </p>
+        </section>
 
       <template v-if="!isAdminView">
 

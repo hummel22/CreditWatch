@@ -174,3 +174,24 @@ export function computeFrequencyWindows(cycle, frequency) {
   }
   return windows
 }
+
+export function computeCalendarAlignedWindow(frequency, referenceDate = new Date()) {
+  const base = parseDate(referenceDate) || startOfDay(new Date())
+  const year = base.getFullYear()
+  const month = base.getMonth()
+  if (frequency === 'monthly') {
+    const start = makeDate(year, month, 1)
+    return { start, end: addMonths(start, 1) }
+  }
+  if (frequency === 'quarterly') {
+    const quarter = Math.floor(month / 3)
+    const start = makeDate(year, quarter * 3, 1)
+    return { start, end: addMonths(start, 3) }
+  }
+  if (frequency === 'semiannual') {
+    const startMonth = month < 6 ? 0 : 6
+    const start = makeDate(year, startMonth, 1)
+    return { start, end: addMonths(start, 6) }
+  }
+  return null
+}

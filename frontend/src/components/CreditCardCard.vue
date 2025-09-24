@@ -5,7 +5,9 @@ import BenefitCard from './BenefitCard.vue'
 import {
   computeCardCycle,
   computeFrequencyWindows,
-  formatDateInput
+  computeCalendarAlignedWindow,
+  formatDateInput,
+  parseDate
 } from '../utils/dates'
 
 const props = defineProps({
@@ -43,6 +45,24 @@ const benefitTypes = ['standard', 'incremental', 'cumulative']
 const defaultYearAlignment = computed(() =>
   props.card.year_tracking_mode === 'anniversary' ? 'anniversary' : 'calendar'
 )
+
+const sortedBenefits = computed(() => {
+  const benefits = Array.isArray(props.card.benefits) ? [...props.card.benefits] : []
+  return benefits.sort((a, b) => {
+    const parsedA = a.expiration_date ? parseDate(a.expiration_date) : null
+    const parsedB = b.expiration_date ? parseDate(b.expiration_date) : null
+    const timeA = parsedA instanceof Date && !Number.isNaN(parsedA.getTime())
+      ? parsedA.getTime()
+      : Number.POSITIVE_INFINITY
+    const timeB = parsedB instanceof Date && !Number.isNaN(parsedB.getTime())
+      ? parsedB.getTime()
+      : Number.POSITIVE_INFINITY
+    if (timeA === timeB) {
+      return a.name.localeCompare(b.name)
+    }
+    return timeA - timeB
+  })
+})
 
 const form = reactive({
   name: '',
@@ -157,6 +177,14 @@ const netStatus = computed(() => {
 })
 
 function computeWindowExpiration(frequency) {
+  if (['monthly', 'quarterly', 'semiannual'].includes(frequency)) {
+    const calendarWindow = computeCalendarAlignedWindow(frequency)
+    if (calendarWindow?.end instanceof Date) {
+      const windowEnd = new Date(calendarWindow.end.getTime() - 24 * 60 * 60 * 1000)
+      return formatDateInput(windowEnd)
+    }
+    return ''
+  }
   const cycle = currentCycle.value
   if (!cycle) {
     return ''
@@ -411,7 +439,7 @@ function handleCardDelete() {
       <div v-if="benefitsExpanded">
         <div v-if="card.benefits.length" class="benefits-grid">
           <BenefitCard
-            v-for="benefit in card.benefits"
+            v-for="benefit in sortedBenefits"
             :key="benefit.id"
             :benefit="benefit"
             @toggle="(value) => emit('toggle-benefit', { id: benefit.id, value })"

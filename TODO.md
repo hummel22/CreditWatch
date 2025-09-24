@@ -46,8 +46,11 @@
 - [x] the benefits should take up two columns in a credit UI card
 - [x] when adding a benefit add descripts for standard and incremental , just like there is for cumulative
 - [x] For cumulative add an optional expected value
-
-
+- [ ] Set the Default for benefits to align monthly, quartly and semi annual frequencies with the caladner year. Default yearly items to match the Credit card year type (at AF or Calander)
+- [ ] When redeeming a benefit auto file amount to value of benefit that time window
+- [ ] Sort Benefits by expiration date, with earliest expiration date first
+- [ ] increase the width of credit cards by a small amount, if the screen supports it enabled 2 columns of benefit cards in credit UI cards
+- [ ] Decrease the size of the menu to height to be simlar to github header menu bar, Put the Credit Watch Top left aligned and the , dashboard /admin in a new menu sidebar that can be slected by a hamburger button top ledt. Move the New Card Button to top right aligned in menu bar
 
 
 

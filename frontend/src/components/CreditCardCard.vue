@@ -46,9 +46,18 @@ const form = reactive({
   frequency: defaultFrequency.value,
   type: 'standard',
   value: '',
+  expected_value: '',
   expiration_date: '',
   yearlyAlignment: defaultYearAlignment.value
 })
+
+const typeDescriptions = {
+  standard: 'Standard benefits are toggled once per cycle.',
+  incremental: 'Incremental benefits accrue value as you log redemptions until reaching the goal.',
+  cumulative: 'Cumulative benefits build value as you add redemptions.'
+}
+
+const currentTypeDescription = computed(() => typeDescriptions[form.type])
 
 const currentCycle = computed(() => computeCardCycle(props.card))
 
@@ -89,6 +98,8 @@ watch(
   (type) => {
     if (type === 'cumulative') {
       form.value = ''
+    } else {
+      form.expected_value = ''
     }
   }
 )
@@ -179,6 +190,7 @@ function resetForm() {
   form.frequency = defaultFrequency.value
   form.type = 'standard'
   form.value = ''
+  form.expected_value = ''
   form.expiration_date = ''
   form.yearlyAlignment = defaultYearAlignment.value
   autoExpiration.value = true
@@ -208,6 +220,10 @@ function populateForm(benefit) {
     benefit.type === 'cumulative' || benefit.value === null
       ? ''
       : String(benefit.value)
+  form.expected_value =
+    benefit.type === 'cumulative' && benefit.expected_value != null
+      ? benefit.expected_value.toString()
+      : ''
   form.expiration_date = benefit.expiration_date || ''
   form.yearlyAlignment = defaultYearAlignment.value
   if (benefit.frequency === 'yearly' && benefit.expiration_date) {
@@ -254,6 +270,17 @@ function submitForm() {
   }
   if (form.type !== 'cumulative') {
     payload.value = Number(form.value)
+  } else {
+    const rawExpected =
+      typeof form.expected_value === 'string'
+        ? form.expected_value.trim()
+        : form.expected_value
+    if (rawExpected === '' || rawExpected === null || rawExpected === undefined) {
+      payload.expected_value = null
+    } else {
+      const parsed = Number(rawExpected)
+      payload.expected_value = Number.isNaN(parsed) ? null : parsed
+    }
   }
   if (formMode.value === 'edit' && editingBenefitId.value) {
     emit('update-benefit', {
@@ -312,15 +339,21 @@ function handleCardDelete() {
         </div>
         <div class="card-toolbar">
           <button class="icon-button ghost" type="button" @click="handleCardHistory" title="View card history">
-            <span aria-hidden="true">📈</span>
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+              <path stroke-linecap="round" d="M4 6h12M4 10h12M4 14h12" />
+            </svg>
             <span class="sr-only">View card history</span>
           </button>
           <button class="icon-button ghost" type="button" @click="handleCardEdit" title="Edit card">
-            <span aria-hidden="true">✏️</span>
+            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path d="M15.58 2.42a1.5 1.5 0 0 0-2.12 0l-9 9V17h5.59l9-9a1.5 1.5 0 0 0 0-2.12zM7 15H5v-2l6.88-6.88 2 2z" />
+            </svg>
             <span class="sr-only">Edit card</span>
           </button>
           <button class="icon-button danger" type="button" @click="handleCardDelete" title="Remove card">
-            <span aria-hidden="true">🗑️</span>
+            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path d="M7 3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1h3.5a.5.5 0 0 1 0 1h-.8l-.62 11a2 2 0 0 1-2 1.9H6.92a2 2 0 0 1-2-1.9L4.3 5H3.5a.5.5 0 0 1 0-1H7zm1 1h4V3H8zM6.3 5l.6 10.8a1 1 0 0 0 1 1h4.2a1 1 0 0 0 1-1L13.7 5z" />
+            </svg>
             <span class="sr-only">Remove card</span>
           </button>
         </div>
@@ -406,10 +439,11 @@ function handleCardDelete() {
           />
           <input
             v-else
-            class="read-only-field"
-            type="text"
-            value="Tracked through redemptions"
-            disabled
+            v-model="form.expected_value"
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="Expected value (optional)"
           />
           <select v-model="form.frequency">
             <option v-for="option in frequencies" :key="option" :value="option">
@@ -428,9 +462,7 @@ function handleCardDelete() {
             <span>Align with AF year</span>
           </label>
         </div>
-        <p v-if="form.type === 'cumulative'" class="helper-text">
-          Cumulative benefits build value as you add redemptions.
-        </p>
+        <p class="helper-text">{{ currentTypeDescription }}</p>
         <div class="modal-actions">
           <button class="primary-button secondary" type="button" @click="closeBenefitModal">
             Cancel
@@ -532,15 +564,6 @@ function handleCardDelete() {
 strong {
   font-weight: 700;
   color: #0f172a;
-}
-
-.read-only-field {
-  background-color: rgba(148, 163, 184, 0.15);
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  color: #475569;
-  padding: 0.5rem 0.75rem;
-  border-radius: 10px;
-  font-style: italic;
 }
 
 .yearly-options {

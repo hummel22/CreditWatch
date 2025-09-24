@@ -21,8 +21,14 @@ from .schemas import (
     CreditCardUpdate,
     CreditCardWithBenefits,
     PreconfiguredCardRead,
+    PreconfiguredCardWrite,
 )
-from .preconfigured import load_preconfigured_cards
+from .preconfigured import (
+    create_preconfigured_card,
+    delete_preconfigured_card,
+    load_preconfigured_cards,
+    update_preconfigured_card,
+)
 
 app = FastAPI(title="CreditWatch", version="0.1.0")
 
@@ -53,6 +59,52 @@ def get_frequencies() -> List[str]:
 @app.get("/api/preconfigured/cards", response_model=List[PreconfiguredCardRead])
 def get_preconfigured_cards() -> List[PreconfiguredCardRead]:
     return load_preconfigured_cards()
+
+
+@app.post(
+    "/api/admin/preconfigured/cards",
+    response_model=PreconfiguredCardRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def admin_create_preconfigured_card(payload: PreconfiguredCardWrite) -> PreconfiguredCardRead:
+    return create_preconfigured_card(payload)
+
+
+@app.put(
+    "/api/admin/preconfigured/cards/{slug}",
+    response_model=PreconfiguredCardRead,
+)
+def admin_update_preconfigured_card(
+    slug: str, payload: PreconfiguredCardWrite
+) -> PreconfiguredCardRead:
+    try:
+        return update_preconfigured_card(slug, payload)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Preconfigured card not found",
+        ) from exc
+    except FileExistsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A card with the provided slug already exists.",
+        ) from exc
+
+
+@app.delete(
+    "/api/admin/preconfigured/cards/{slug}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+def admin_delete_preconfigured_card(slug: str) -> Response:
+    try:
+        delete_preconfigured_card(slug)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Preconfigured card not found",
+        ) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.get("/api/cards", response_model=List[CreditCardWithBenefits])
@@ -282,6 +334,7 @@ def build_benefit_read(
         frequency=benefit.frequency,
         type=benefit.type,
         value=benefit.value,
+        expected_value=benefit.expected_value,
         expiration_date=benefit.expiration_date,
         is_used=benefit.is_used,
         used_at=benefit.used_at,
@@ -299,6 +352,10 @@ def compute_benefit_totals(benefit: BenefitRead) -> Tuple[float, float]:
         potential = benefit.value
         utilized = min(benefit.redemption_total, benefit.value)
     else:
-        potential = benefit.redemption_total
-        utilized = benefit.redemption_total
+        potential = benefit.expected_value or benefit.redemption_total
+        utilized = (
+            min(benefit.redemption_total, potential)
+            if benefit.expected_value
+            else benefit.redemption_total
+        )
     return potential, utilized

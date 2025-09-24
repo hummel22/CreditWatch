@@ -69,17 +69,23 @@ def update_benefit(session: Session, benefit: Benefit, payload: BenefitUpdate) -
     update_data = payload.model_dump(exclude_unset=True)
     value = update_data.pop("value", None)
     is_used = update_data.pop("is_used", None)
+    expected_value = update_data.pop("expected_value", None)
     new_type = update_data.get("type")
 
     if new_type and new_type != benefit.type:
         benefit.is_used = False
         benefit.used_at = None
+        if new_type != BenefitType.cumulative:
+            benefit.expected_value = None
 
     for key, item in update_data.items():
         setattr(benefit, key, item)
 
     if value is not None:
         benefit.value = value
+
+    if "expected_value" in payload.model_fields_set:
+        benefit.expected_value = expected_value
 
     if is_used is not None and benefit.type == BenefitType.standard:
         benefit.is_used = is_used

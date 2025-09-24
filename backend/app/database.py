@@ -49,6 +49,10 @@ def ensure_benefit_type_column() -> None:
             connection.exec_driver_sql(
                 "ALTER TABLE benefit ADD COLUMN value FLOAT NOT NULL DEFAULT 0"
             )
+        if "expected_value" not in existing_columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE benefit ADD COLUMN expected_value FLOAT"
+            )
 
 
 def ensure_card_year_tracking_column() -> None:

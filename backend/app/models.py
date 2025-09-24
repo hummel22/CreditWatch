@@ -61,6 +61,7 @@ class Benefit(SQLModel, table=True):
     frequency: BenefitFrequency
     type: BenefitType = Field(default=BenefitType.standard)
     value: float = Field(default=0, ge=0)
+    expected_value: Optional[float] = Field(default=None, ge=0)
     expiration_date: Optional[date] = None
     is_used: bool = Field(default=False)
     used_at: Optional[datetime] = None

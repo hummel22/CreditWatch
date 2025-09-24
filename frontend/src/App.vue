@@ -17,6 +17,58 @@ const error = ref('')
 const frequencies = ref(['monthly', 'quarterly', 'semiannual', 'yearly'])
 const preconfiguredCards = ref([])
 
+const currentView = ref('dashboard')
+const navItems = [
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'admin', label: 'Admin' }
+]
+
+const isAdminView = computed(() => currentView.value === 'admin')
+
+function setView(view) {
+  currentView.value = view
+}
+
+watch(currentView, () => {
+  error.value = ''
+})
+
+function resolveDefaultFrequency() {
+  return frequencies.value[0] || 'monthly'
+}
+
+function createAdminBenefit() {
+  return {
+    name: '',
+    description: '',
+    frequency: resolveDefaultFrequency(),
+    type: 'standard',
+    value: '',
+    expected_value: ''
+  }
+}
+
+const adminModal = reactive({
+  open: false,
+  mode: 'create',
+  originalSlug: '',
+  form: {
+    slug: '',
+    card_type: '',
+    company_name: '',
+    annual_fee: '',
+    benefits: []
+  }
+})
+
+const adminSaving = ref(false)
+
+const benefitTypeDescriptions = {
+  standard: 'Standard benefits are toggled once per cycle.',
+  incremental: 'Incremental benefits accrue value as you log redemptions toward a goal.',
+  cumulative: 'Cumulative benefits build value as you add redemptions.'
+}
+
 const showCardModal = ref(false)
 
 const newCard = reactive({
@@ -159,6 +211,141 @@ function resetNewCard() {
   selectedTemplateSlug.value = ''
 }
 
+function resetAdminModal() {
+  adminModal.originalSlug = ''
+  adminModal.form.slug = ''
+  adminModal.form.card_type = ''
+  adminModal.form.company_name = ''
+  adminModal.form.annual_fee = ''
+  adminModal.form.benefits = []
+}
+
+function openAdminCreateModal() {
+  adminModal.mode = 'create'
+  resetAdminModal()
+  adminModal.form.benefits.push(createAdminBenefit())
+  error.value = ''
+  adminModal.open = true
+}
+
+function openAdminEditModal(card) {
+  adminModal.mode = 'edit'
+  adminModal.originalSlug = card.slug
+  adminModal.form.slug = card.slug
+  adminModal.form.card_type = card.card_type
+  adminModal.form.company_name = card.company_name
+  adminModal.form.annual_fee = card.annual_fee.toString()
+  adminModal.form.benefits = card.benefits.map((benefit) => ({
+    name: benefit.name,
+    description: benefit.description || '',
+    frequency: benefit.frequency,
+    type: benefit.type,
+    value:
+      benefit.type === 'cumulative'
+        ? ''
+        : benefit.value != null
+          ? benefit.value.toString()
+          : '',
+    expected_value:
+      benefit.type === 'cumulative' && benefit.expected_value != null
+        ? benefit.expected_value.toString()
+        : ''
+  }))
+  if (!adminModal.form.benefits.length) {
+    adminModal.form.benefits.push(createAdminBenefit())
+  }
+  error.value = ''
+  adminModal.open = true
+}
+
+function closeAdminModal() {
+  adminModal.open = false
+  adminSaving.value = false
+  resetAdminModal()
+}
+
+function addAdminBenefit() {
+  adminModal.form.benefits.push(createAdminBenefit())
+}
+
+function removeAdminBenefit(index) {
+  adminModal.form.benefits.splice(index, 1)
+  if (!adminModal.form.benefits.length) {
+    adminModal.form.benefits.push(createAdminBenefit())
+  }
+}
+
+function handleAdminBenefitTypeChange(benefit) {
+  if (benefit.type === 'cumulative') {
+    benefit.value = ''
+  } else {
+    benefit.expected_value = ''
+  }
+}
+
+async function submitAdminCard() {
+  if (!adminModal.form.card_type || !adminModal.form.company_name) {
+    error.value = 'Please complete the card details.'
+    return
+  }
+  adminSaving.value = true
+  try {
+    const payload = {
+      slug: adminModal.form.slug || undefined,
+      card_type: adminModal.form.card_type,
+      company_name: adminModal.form.company_name,
+      annual_fee: Number(adminModal.form.annual_fee || 0),
+      benefits: adminModal.form.benefits.map((benefit) => {
+        const base = {
+          name: benefit.name,
+          description: benefit.description || null,
+          frequency: benefit.frequency,
+          type: benefit.type
+        }
+        if (benefit.type !== 'cumulative') {
+          base.value = Number(benefit.value || 0)
+        } else {
+          const rawExpected =
+            typeof benefit.expected_value === 'string'
+              ? benefit.expected_value.trim()
+              : benefit.expected_value
+          if (rawExpected === '' || rawExpected === null || rawExpected === undefined) {
+            base.expected_value = null
+          } else {
+            const parsed = Number(rawExpected)
+            base.expected_value = Number.isNaN(parsed) ? null : parsed
+          }
+        }
+        return base
+      })
+    }
+    if (adminModal.mode === 'edit') {
+      await axios.put(
+        `/api/admin/preconfigured/cards/${encodeURIComponent(adminModal.originalSlug)}`,
+        payload
+      )
+    } else {
+      await axios.post('/api/admin/preconfigured/cards', payload)
+    }
+    await loadPreconfiguredCards()
+    closeAdminModal()
+    error.value = ''
+  } catch (err) {
+    error.value = 'Unable to save the preconfigured card.'
+  } finally {
+    adminSaving.value = false
+  }
+}
+
+async function handleDeletePreconfiguredCard(slug) {
+  try {
+    await axios.delete(`/api/admin/preconfigured/cards/${encodeURIComponent(slug)}`)
+    await loadPreconfiguredCards()
+  } catch (err) {
+    error.value = 'Unable to delete the preconfigured card.'
+  }
+}
+
 function closeCardModal() {
   showCardModal.value = false
   resetNewCard()
@@ -188,8 +375,14 @@ async function handleCreateCard() {
           description: benefit.description || null,
           frequency: benefit.frequency,
           type: benefit.type,
-          value: benefit.type === 'cumulative' ? undefined : benefit.value,
           expiration_date: null
+        }
+        if (benefit.type === 'cumulative') {
+          if (benefit.expected_value != null) {
+            benefitPayload.expected_value = benefit.expected_value
+          }
+        } else {
+          benefitPayload.value = benefit.value
         }
         if (benefitPayload.value === undefined) {
           delete benefitPayload.value
@@ -731,172 +924,271 @@ onMounted(async () => {
 </script>
 
 <template>
-  <main>
-    <div class="container">
-      <header>
-        <h1 class="page-title">CreditWatch</h1>
-        <p class="page-subtitle">
-          Track every card, benefit, and annual fee so you always know if your cards pay for themselves.
-        </p>
-      </header>
-
-      <section class="section-card">
-        <div class="section-header">
-          <h2 class="section-title">Add a credit card</h2>
-          <button class="primary-button" type="button" @click="showCardModal = true">New card</button>
-        </div>
-        <p class="section-description">
-          Keep your issuer, account, and fee details in one place so you always know a card's value.
-        </p>
-      </section>
-
-      <BaseModal :open="showCardModal" title="Add a credit card" @close="closeCardModal">
-        <form @submit.prevent="handleCreateCard">
-          <div class="field-group">
-            <select v-model="selectedTemplateSlug">
-              <option value="">Select a preconfigured card (optional)</option>
-              <option
-                v-for="card in preconfiguredCards"
-                :key="card.slug"
-                :value="card.slug"
-              >
-                {{ card.card_type }} · {{ card.company_name }}
-              </option>
-            </select>
-          </div>
-          <p v-if="selectedTemplate" class="helper-text">
-            Benefits from the selected template will be added automatically after the card
-            is created.
+  <div class="app-shell">
+    <header class="app-header">
+      <div class="container header-bar">
+        <div class="header-brand">
+          <h1 class="page-title">CreditWatch</h1>
+          <p class="brand-tagline">
+            Track every card, benefit, and annual fee so you always know if your cards pay for themselves.
           </p>
-          <div class="field-group">
-            <input v-model="newCard.card_name" type="text" placeholder="Card name" required />
-            <input
-              v-model="newCard.company_name"
-              type="text"
-              placeholder="Company name (e.g., Chase, Amex)"
-              required
-            />
-          </div>
-          <div class="field-group">
-            <input
-              v-model="newCard.last_four"
-              type="text"
-              maxlength="4"
-              minlength="4"
-              placeholder="Last four digits"
-              required
-            />
-            <input v-model="newCard.account_name" type="text" placeholder="Account name" required />
-          </div>
-          <div class="field-group">
-            <input v-model="newCard.annual_fee" type="number" min="0" step="0.01" placeholder="Annual fee" />
-            <input v-model="newCard.fee_due_date" type="date" required />
-          </div>
-          <div class="radio-group">
-            <label class="radio-option">
-              <input v-model="newCard.year_tracking_mode" type="radio" value="calendar" />
-              <span>Calendar year</span>
-            </label>
-            <label class="radio-option">
-              <input v-model="newCard.year_tracking_mode" type="radio" value="anniversary" />
-              <span>Align with AF year</span>
-            </label>
-          </div>
-          <div class="modal-actions">
-            <button class="primary-button secondary" type="button" @click="closeCardModal">Cancel</button>
-            <button class="primary-button" type="submit">Save card</button>
-          </div>
-        </form>
-      </BaseModal>
-
-      <BaseModal :open="editCardModal.open" title="Edit credit card" @close="closeEditCardModal">
-        <form @submit.prevent="submitEditCard">
-          <div class="field-group">
-            <input v-model="editCardModal.form.card_name" type="text" placeholder="Card name" required />
-            <input
-              v-model="editCardModal.form.company_name"
-              type="text"
-              placeholder="Company name"
-              required
-            />
-          </div>
-          <div class="field-group">
-            <input
-              v-model="editCardModal.form.last_four"
-              type="text"
-              maxlength="4"
-              minlength="4"
-              placeholder="Last four digits"
-              required
-            />
-            <input v-model="editCardModal.form.account_name" type="text" placeholder="Account name" required />
-          </div>
-          <div class="field-group">
-            <input
-              v-model="editCardModal.form.annual_fee"
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="Annual fee"
-            />
-            <input v-model="editCardModal.form.fee_due_date" type="date" required />
-          </div>
-          <div class="radio-group">
-            <label class="radio-option">
-              <input v-model="editCardModal.form.year_tracking_mode" type="radio" value="calendar" />
-              <span>Calendar year</span>
-            </label>
-            <label class="radio-option">
-              <input v-model="editCardModal.form.year_tracking_mode" type="radio" value="anniversary" />
-              <span>Align with AF year</span>
-            </label>
-          </div>
-          <div class="modal-actions">
-            <button class="primary-button secondary" type="button" @click="closeEditCardModal">Cancel</button>
-            <button class="primary-button" type="submit">Save changes</button>
-          </div>
-        </form>
-      </BaseModal>
-
-      <section class="section-card">
-        <h2 class="section-title">Portfolio overview</h2>
-        <div class="summary-row">
-          <span>Total annual fees: <strong>${{ totals.annualFees.toFixed(2) }}</strong></span>
-          <span>Total potential: <strong>${{ totals.potential.toFixed(2) }}</strong></span>
-          <span>Total utilized: <strong>${{ totals.utilized.toFixed(2) }}</strong></span>
-          <span>Net position: <strong>${{ totals.net.toFixed(2) }}</strong></span>
         </div>
-      </section>
-
-      <section>
-        <h2 class="section-title">Your cards</h2>
-        <p v-if="loading" class="empty-state">Loading your cards...</p>
-        <p v-else-if="!cards.length" class="empty-state">
-          No cards yet. Add your first credit card to begin tracking benefits.
-        </p>
-        <div v-else>
-          <CreditCardList
-            :cards="cards"
-            :frequencies="frequencies"
-            @add-benefit="handleAddBenefit"
-            @toggle-benefit="handleToggleBenefit"
-            @delete-benefit="handleDeleteBenefit"
-            @delete-card="handleDeleteCard"
-            @add-redemption="handleAddRedemption"
-            @view-history="handleViewHistory"
-            @update-benefit="handleUpdateBenefit"
-            @edit-card="handleEditCard"
-            @view-card-history="handleViewCardHistory"
-            @view-benefit-windows="handleViewBenefitWindows"
-          />
+        <nav class="header-nav">
+          <button
+            v-for="item in navItems"
+            :key="item.id"
+            class="nav-button"
+            type="button"
+            :class="{ active: currentView === item.id }"
+            @click="setView(item.id)"
+          >
+            {{ item.label }}
+          </button>
+        </nav>
+        <div class="header-actions">
+          <button
+            v-if="!isAdminView"
+            class="primary-button"
+            type="button"
+            @click="showCardModal = true"
+          >
+            New card
+          </button>
+          <button v-else class="primary-button" type="button" @click="openAdminCreateModal">
+            New template
+          </button>
         </div>
-      </section>
+      </div>
+    </header>
+    <main class="app-main">
+      <div class="container">
 
-      <p v-if="error" class="empty-state" style="margin-top: 2rem; color: #b91c1c; border-color: rgba(248,113,113,0.35);">
+      <template v-if="!isAdminView">
+        <section class="section-card intro-section">
+          <h2 class="section-title">Add a credit card</h2>
+          <p class="section-description">
+            Keep your issuer, account, and fee details in one place so you always know a card's value.
+          </p>
+        </section>
+
+        <section class="section-card">
+          <h2 class="section-title">Portfolio overview</h2>
+          <div class="summary-row">
+            <span>Total annual fees: <strong>${{ totals.annualFees.toFixed(2) }}</strong></span>
+            <span>Total potential: <strong>${{ totals.potential.toFixed(2) }}</strong></span>
+            <span>Total utilized: <strong>${{ totals.utilized.toFixed(2) }}</strong></span>
+            <span>Net position: <strong>${{ totals.net.toFixed(2) }}</strong></span>
+          </div>
+        </section>
+
+        <section>
+          <h2 class="section-title">Your cards</h2>
+          <p v-if="loading" class="empty-state">Loading your cards...</p>
+          <p v-else-if="!cards.length" class="empty-state">
+            No cards yet. Add your first credit card to begin tracking benefits.
+          </p>
+          <div v-else>
+            <CreditCardList
+              :cards="cards"
+              :frequencies="frequencies"
+              @add-benefit="handleAddBenefit"
+              @toggle-benefit="handleToggleBenefit"
+              @delete-benefit="handleDeleteBenefit"
+              @delete-card="handleDeleteCard"
+              @add-redemption="handleAddRedemption"
+              @view-history="handleViewHistory"
+              @update-benefit="handleUpdateBenefit"
+              @edit-card="handleEditCard"
+              @view-card-history="handleViewCardHistory"
+              @view-benefit-windows="handleViewBenefitWindows"
+            />
+          </div>
+        </section>
+      </template>
+
+      <template v-else>
+        <section class="section-card admin-board">
+          <div class="section-header">
+            <div>
+              <h2 class="section-title">Preconfigured cards</h2>
+              <p class="section-description">
+                Manage the templates that seed new cards with benefits and annual fees.
+              </p>
+            </div>
+            <button class="primary-button secondary" type="button" @click="openAdminCreateModal">
+              Add template
+            </button>
+          </div>
+          <div v-if="!preconfiguredCards.length" class="empty-state">
+            No templates yet. Add one to get started.
+          </div>
+          <div v-else class="admin-table-wrapper">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Template</th>
+                  <th>Company</th>
+                  <th>Annual fee</th>
+                  <th>Benefits</th>
+                  <th class="actions-column">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="card in preconfiguredCards" :key="card.slug">
+                  <td>
+                    <div class="admin-table__name">
+                      <span class="admin-card-name">{{ card.card_type }}</span>
+                      <span class="admin-card-slug">{{ card.slug }}</span>
+                    </div>
+                  </td>
+                  <td>{{ card.company_name }}</td>
+                  <td>${{ card.annual_fee.toFixed(2) }}</td>
+                  <td>{{ card.benefits.length }}</td>
+                  <td class="admin-actions">
+                    <button
+                      class="icon-button ghost"
+                      type="button"
+                      @click="openAdminEditModal(card)"
+                      title="Edit template"
+                    >
+                      <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                        <path
+                          d="M15.58 2.42a1.5 1.5 0 0 0-2.12 0l-1.3 1.3 4.12 4.12 1.3-1.3a1.5 1.5 0 0 0 0-2.12zM3 13.59V17h3.41l8.6-8.6-4.12-4.12z"
+                        />
+                      </svg>
+                      <span class="sr-only">Edit template</span>
+                    </button>
+                    <button
+                      class="icon-button danger"
+                      type="button"
+                      @click="handleDeletePreconfiguredCard(card.slug)"
+                      title="Delete template"
+                    >
+                      <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                        <path
+                          d="M7 3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1h3.5a.5.5 0 0 1 0 1h-.8l-.62 11a2 2 0 0 1-2 1.9H6.92a2 2 0 0 1-2-1.9L4.3 5H3.5a.5.5 0 0 1 0-1H7zm1 1h4V3H8zM6.3 5l.6 10.8a1 1 0 0 0 1 1h4.2a1 1 0 0 0 1-1L13.7 5z"
+                        />
+                      </svg>
+                      <span class="sr-only">Delete template</span>
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </template>
+
+      <p v-if="error" class="empty-state error-message">
         {{ error }}
       </p>
     </div>
   </main>
+  </div>
+
+  <BaseModal :open="showCardModal" title="Add a credit card" @close="closeCardModal">
+    <form @submit.prevent="handleCreateCard">
+      <div class="field-group">
+        <select v-model="selectedTemplateSlug">
+          <option value="">Select a preconfigured card (optional)</option>
+          <option v-for="card in preconfiguredCards" :key="card.slug" :value="card.slug">
+            {{ card.card_type }} · {{ card.company_name }}
+          </option>
+        </select>
+      </div>
+      <p v-if="selectedTemplate" class="helper-text">
+        Benefits from the selected template will be added automatically after the card
+        is created.
+      </p>
+      <div class="field-group">
+        <input v-model="newCard.card_name" type="text" placeholder="Card name" required />
+        <input
+          v-model="newCard.company_name"
+          type="text"
+          placeholder="Company name (e.g., Chase, Amex)"
+          required
+        />
+      </div>
+      <div class="field-group">
+        <input
+          v-model="newCard.last_four"
+          type="text"
+          maxlength="4"
+          minlength="4"
+          placeholder="Last four digits"
+          required
+        />
+        <input v-model="newCard.account_name" type="text" placeholder="Account name" required />
+      </div>
+      <div class="field-group">
+        <input v-model="newCard.annual_fee" type="number" min="0" step="0.01" placeholder="Annual fee" />
+        <input v-model="newCard.fee_due_date" type="date" required />
+      </div>
+      <div class="radio-group">
+        <label class="radio-option">
+          <input v-model="newCard.year_tracking_mode" type="radio" value="calendar" />
+          <span>Calendar year</span>
+        </label>
+        <label class="radio-option">
+          <input v-model="newCard.year_tracking_mode" type="radio" value="anniversary" />
+          <span>Align with AF year</span>
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button class="primary-button secondary" type="button" @click="closeCardModal">Cancel</button>
+        <button class="primary-button" type="submit">Save card</button>
+      </div>
+    </form>
+  </BaseModal>
+
+  <BaseModal :open="editCardModal.open" title="Edit credit card" @close="closeEditCardModal">
+    <form @submit.prevent="submitEditCard">
+      <div class="field-group">
+        <input v-model="editCardModal.form.card_name" type="text" placeholder="Card name" required />
+        <input
+          v-model="editCardModal.form.company_name"
+          type="text"
+          placeholder="Company name"
+          required
+        />
+      </div>
+      <div class="field-group">
+        <input
+          v-model="editCardModal.form.last_four"
+          type="text"
+          maxlength="4"
+          minlength="4"
+          placeholder="Last four digits"
+          required
+        />
+        <input v-model="editCardModal.form.account_name" type="text" placeholder="Account name" required />
+      </div>
+      <div class="field-group">
+        <input
+          v-model="editCardModal.form.annual_fee"
+          type="number"
+          min="0"
+          step="0.01"
+          placeholder="Annual fee"
+        />
+        <input v-model="editCardModal.form.fee_due_date" type="date" required />
+      </div>
+      <div class="radio-group">
+        <label class="radio-option">
+          <input v-model="editCardModal.form.year_tracking_mode" type="radio" value="calendar" />
+          <span>Calendar year</span>
+        </label>
+        <label class="radio-option">
+          <input v-model="editCardModal.form.year_tracking_mode" type="radio" value="anniversary" />
+          <span>Align with AF year</span>
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button class="primary-button secondary" type="button" @click="closeEditCardModal">Cancel</button>
+        <button class="primary-button" type="submit">Save changes</button>
+      </div>
+    </form>
+  </BaseModal>
 
   <BaseModal
     :open="redemptionModal.open"
@@ -959,26 +1251,30 @@ onMounted(async () => {
             <td>{{ new Date(entry.occurred_on).toLocaleDateString() }}</td>
             <td>{{ entry.label }}</td>
             <td>${{ Number(entry.amount).toFixed(2) }}</td>
-            <td class="history-actions">
-              <button
-                class="icon-button ghost"
-                type="button"
-                title="Edit redemption"
-                @click="handleEditRedemption(entry)"
-              >
-                <span aria-hidden="true">✏️</span>
-                <span class="sr-only">Edit redemption</span>
-              </button>
-              <button
-                class="icon-button danger"
-                type="button"
-                title="Delete redemption"
-                @click="handleDeleteRedemption(entry)"
-              >
-                <span aria-hidden="true">🗑️</span>
-                <span class="sr-only">Delete redemption</span>
-              </button>
-            </td>
+          <td class="history-actions">
+            <button
+              class="icon-button ghost"
+              type="button"
+              title="Edit redemption"
+              @click="handleEditRedemption(entry)"
+            >
+              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path d="M15.58 2.42a1.5 1.5 0 0 0-2.12 0l-9 9V17h5.59l9-9a1.5 1.5 0 0 0 0-2.12zM7 15H5v-2l6.88-6.88 2 2z" />
+              </svg>
+              <span class="sr-only">Edit redemption</span>
+            </button>
+            <button
+              class="icon-button danger"
+              type="button"
+              title="Delete redemption"
+              @click="handleDeleteRedemption(entry)"
+            >
+              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path d="M7 3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1h3.5a.5.5 0 0 1 0 1h-.8l-.62 11a2 2 0 0 1-2 1.9H6.92a2 2 0 0 1-2-1.9L4.3 5H3.5a.5.5 0 0 1 0-1H7zm1 1h4V3H8zM6.3 5l.6 10.8a1 1 0 0 0 1 1h4.2a1 1 0 0 0 1-1L13.7 5z" />
+              </svg>
+              <span class="sr-only">Delete redemption</span>
+            </button>
+          </td>
           </tr>
         </tbody>
       </table>
@@ -1075,5 +1371,98 @@ onMounted(async () => {
       </article>
     </div>
     <p v-else class="empty-state">No recurring windows recorded yet.</p>
+  </BaseModal>
+
+  <BaseModal
+    :open="adminModal.open"
+    :title="adminModal.mode === 'edit' ? 'Edit template' : 'Add template'"
+    @close="closeAdminModal"
+  >
+    <form @submit.prevent="submitAdminCard">
+      <div class="field-group">
+        <input v-model="adminModal.form.card_type" type="text" placeholder="Card name" required />
+        <input v-model="adminModal.form.company_name" type="text" placeholder="Company name" required />
+      </div>
+      <div class="field-group">
+        <input v-model="adminModal.form.slug" type="text" placeholder="Slug (optional)" />
+        <input
+          v-model="adminModal.form.annual_fee"
+          type="number"
+          min="0"
+          step="0.01"
+          placeholder="Annual fee"
+        />
+      </div>
+      <div class="admin-benefit-editor">
+        <div
+          v-for="(benefit, index) in adminModal.form.benefits"
+          :key="`admin-benefit-${index}`"
+          class="admin-benefit-card"
+        >
+          <div class="field-group">
+            <input v-model="benefit.name" type="text" placeholder="Benefit name" required />
+            <select v-model="benefit.type" @change="handleAdminBenefitTypeChange(benefit)">
+              <option value="standard">Standard</option>
+              <option value="incremental">Incremental</option>
+              <option value="cumulative">Cumulative</option>
+            </select>
+            <select v-model="benefit.frequency">
+              <option v-for="option in frequencies" :key="option" :value="option">
+                {{ option.charAt(0).toUpperCase() + option.slice(1) }}
+              </option>
+            </select>
+          </div>
+          <textarea
+            v-model="benefit.description"
+            rows="2"
+            placeholder="Description (optional)"
+          ></textarea>
+          <div class="field-group admin-benefit-values">
+            <input
+              v-if="benefit.type !== 'cumulative'"
+              v-model="benefit.value"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="Value"
+              required
+            />
+            <input
+              v-else
+              v-model="benefit.expected_value"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="Expected value (optional)"
+            />
+            <button
+              class="icon-button ghost"
+              type="button"
+              title="Remove benefit"
+              @click="removeAdminBenefit(index)"
+            >
+              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path
+                  d="M5.5 5.5a.75.75 0 0 1 1.06 0L10 8.94l3.44-3.44a.75.75 0 1 1 1.06 1.06L11.06 10l3.44 3.44a.75.75 0 0 1-1.06 1.06L10 11.06l-3.44 3.44a.75.75 0 0 1-1.06-1.06L8.94 10 5.5 6.56a.75.75 0 0 1 0-1.06z"
+                />
+              </svg>
+              <span class="sr-only">Remove benefit</span>
+            </button>
+          </div>
+          <p class="helper-text">{{ benefitTypeDescriptions[benefit.type] }}</p>
+        </div>
+        <button class="link-button inline" type="button" @click="addAdminBenefit">
+          Add another benefit
+        </button>
+      </div>
+      <div class="modal-actions">
+        <button class="primary-button secondary" type="button" @click="closeAdminModal">
+          Cancel
+        </button>
+        <button class="primary-button" type="submit" :disabled="adminSaving">
+          {{ adminSaving ? 'Saving…' : 'Save template' }}
+        </button>
+      </div>
+    </form>
   </BaseModal>
 </template>

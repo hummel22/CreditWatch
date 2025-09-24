@@ -16,7 +16,7 @@
       "description": "$5 monthly statement credits toward DoorDash and Caviar orders when you activate DashPass.",
       "frequency": "monthly",
       "type": "incremental",
-      "value": 60
+      "value": 5
     },
     {
       "name": "DoorDash DashPass membership",
@@ -30,7 +30,7 @@
       "description": "Instacart+ membership with up to $15 in monthly statement credits (currently through 7/31/2024).",
       "frequency": "monthly",
       "type": "incremental",
-      "value": 180
+      "value": 15
     },
     {
       "name": "Lyft Pink membership",

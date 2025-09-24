@@ -16,14 +16,14 @@
       "description": "Quarterly statement credits toward IHG purchases.",
       "frequency": "quarterly",
       "type": "incremental",
-      "value": 100
+      "value": 25
     },
     {
       "name": "United TravelBank credit",
       "description": "$25 in United TravelBank cash deposited twice per year after linking accounts.",
       "frequency": "semiannual",
       "type": "incremental",
-      "value": 50
+      "value": 25
     },
     {
       "name": "IHG promotions",

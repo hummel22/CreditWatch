@@ -18,6 +18,7 @@ def init_db() -> None:
     SQLModel.metadata.create_all(engine)
     ensure_company_name_column()
     ensure_benefit_type_column()
+    ensure_benefit_window_values_column()
     ensure_card_year_tracking_column()
 
 
@@ -52,6 +53,19 @@ def ensure_benefit_type_column() -> None:
         if "expected_value" not in existing_columns:
             connection.exec_driver_sql(
                 "ALTER TABLE benefit ADD COLUMN expected_value FLOAT"
+            )
+
+
+def ensure_benefit_window_values_column() -> None:
+    """Ensure recurring benefits can store per-window values."""
+
+    with engine.connect() as connection:
+        existing_columns = {
+            row[1] for row in connection.exec_driver_sql("PRAGMA table_info(benefit)")
+        }
+        if "window_values" not in existing_columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE benefit ADD COLUMN window_values JSON"
             )
 
 

@@ -172,7 +172,8 @@ export function computeFrequencyWindows(cycle, frequency) {
     windows.push({
       start: cursor,
       end: clampedEnd,
-      label
+      label,
+      index
     })
     cursor = windowEnd
     index += 1

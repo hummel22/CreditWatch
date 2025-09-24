@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from .models import Benefit, BenefitRedemption, BenefitType, CreditCard
+from .models import Benefit, BenefitFrequency, BenefitRedemption, BenefitType, CreditCard
 from .schemas import (
     BenefitCreate,
     BenefitRedemptionCreate,
@@ -16,6 +16,7 @@ from .schemas import (
     CreditCardCreate,
     CreditCardUpdate,
 )
+from .schemas import normalise_window_values
 
 
 def create_credit_card(session: Session, payload: CreditCardCreate) -> CreditCard:
@@ -53,10 +54,12 @@ def get_credit_card(session: Session, card_id: int) -> Optional[CreditCard]:
 def create_benefit(session: Session, card: CreditCard, payload: BenefitCreate) -> Benefit:
     data = payload.model_dump()
     value = data.pop("value", None)
+    window_values = data.pop("window_values", None)
     benefit = Benefit(
         **data,
         credit_card_id=card.id,
         value=value if value is not None else 0,
+        window_values=window_values,
     )
     session.add(benefit)
     session.commit()
@@ -70,7 +73,9 @@ def update_benefit(session: Session, benefit: Benefit, payload: BenefitUpdate) -
     value = update_data.pop("value", None)
     is_used = update_data.pop("is_used", None)
     expected_value = update_data.pop("expected_value", None)
+    raw_window_values = update_data.pop("window_values", None)
     new_type = update_data.get("type")
+    new_frequency = update_data.get("frequency")
 
     if new_type and new_type != benefit.type:
         benefit.is_used = False
@@ -86,6 +91,21 @@ def update_benefit(session: Session, benefit: Benefit, payload: BenefitUpdate) -
 
     if "expected_value" in payload.model_fields_set:
         benefit.expected_value = expected_value
+
+    target_frequency = new_frequency or benefit.frequency
+    if "window_values" in payload.model_fields_set:
+        if raw_window_values is None:
+            benefit.window_values = None
+        else:
+            benefit.window_values = normalise_window_values(
+                target_frequency, raw_window_values
+            )
+
+    if (
+        new_frequency
+        and new_frequency not in (BenefitFrequency.monthly, BenefitFrequency.quarterly, BenefitFrequency.semiannual)
+    ):
+        benefit.window_values = None
 
     if is_used is not None and benefit.type == BenefitType.standard:
         benefit.is_used = is_used

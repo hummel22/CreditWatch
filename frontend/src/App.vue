@@ -64,7 +64,9 @@ function createAdminBenefit() {
     frequency: resolveDefaultFrequency(),
     type: 'standard',
     value: '',
-    expected_value: ''
+    expected_value: '',
+    useCustomValues: false,
+    window_values: []
   }
 }
 
@@ -87,6 +89,86 @@ const benefitTypeDescriptions = {
   standard: 'Standard benefits are toggled once per cycle.',
   incremental: 'Incremental benefits accrue value as you log redemptions toward a goal.',
   cumulative: 'Cumulative benefits build value as you add redemptions.'
+}
+
+const WINDOW_COUNTS = {
+  monthly: 12,
+  quarterly: 4,
+  semiannual: 2
+}
+
+const MONTH_LABELS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December'
+]
+
+function supportsCustomWindowValues(frequency) {
+  return Boolean(WINDOW_COUNTS[frequency])
+}
+
+function resolveBenefitWindowCount(benefit) {
+  if (!benefit) {
+    return 1
+  }
+  if (typeof benefit.cycle_window_count === 'number' && benefit.cycle_window_count > 0) {
+    return benefit.cycle_window_count
+  }
+  return supportsCustomWindowValues(benefit.frequency)
+    ? WINDOW_COUNTS[benefit.frequency]
+    : 1
+}
+
+function getWindowValueForIndex(benefit, index) {
+  if (!benefit || typeof index !== 'number' || index < 1) {
+    const base = Number(benefit?.value ?? 0)
+    return Number.isFinite(base) ? base : 0
+  }
+  if (Array.isArray(benefit.window_values) && benefit.window_values.length >= index) {
+    const value = Number(benefit.window_values[index - 1] ?? 0)
+    return Number.isFinite(value) ? value : 0
+  }
+  const base = Number(benefit?.value ?? 0)
+  return Number.isFinite(base) ? base : 0
+}
+
+function getCycleTargetValue(benefit) {
+  if (!benefit) {
+    return 0
+  }
+  if (benefit.cycle_target_value != null) {
+    const parsed = Number(benefit.cycle_target_value)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+  if (benefit.type === 'cumulative') {
+    const expected = Number(benefit.expected_value ?? 0)
+    if (Number.isFinite(expected) && expected > 0) {
+      return expected
+    }
+    const cycleTotal = Number(benefit.cycle_redemption_total ?? 0)
+    return Number.isFinite(cycleTotal) ? cycleTotal : 0
+  }
+  const windowCount = resolveBenefitWindowCount(benefit)
+  if (Array.isArray(benefit.window_values) && benefit.window_values.length) {
+    return benefit.window_values.slice(0, windowCount).reduce((acc, value) => {
+      const parsed = Number(value ?? 0)
+      return acc + (Number.isFinite(parsed) ? parsed : 0)
+    }, 0)
+  }
+  const base = Number(benefit.value ?? 0)
+  if (!Number.isFinite(base)) {
+    return 0
+  }
+  return base * windowCount
 }
 
 const showCardModal = ref(false)
@@ -253,6 +335,90 @@ function resetAdminModal() {
   adminModal.form.benefits = []
 }
 
+function normaliseAdminBenefitWindows(benefit) {
+  if (!benefit) {
+    return
+  }
+  if (!supportsCustomWindowValues(benefit.frequency) || benefit.type === 'cumulative') {
+    benefit.useCustomValues = false
+    benefit.window_values = []
+    return
+  }
+  if (!benefit.useCustomValues) {
+    benefit.window_values = []
+    return
+  }
+  const count = WINDOW_COUNTS[benefit.frequency] || 1
+  const values = Array.isArray(benefit.window_values) ? [...benefit.window_values] : []
+  const trimmed = values.slice(0, count)
+  const baseValue =
+    benefit.value !== '' && benefit.value != null ? benefit.value.toString() : ''
+  while (trimmed.length < count) {
+    trimmed.push(baseValue)
+  }
+  if (baseValue !== '') {
+    for (let index = 0; index < trimmed.length; index += 1) {
+      if (trimmed[index] === '') {
+        trimmed[index] = baseValue
+      }
+    }
+  }
+  benefit.window_values = trimmed
+}
+
+function handleAdminBenefitFrequencyChange(benefit) {
+  normaliseAdminBenefitWindows(benefit)
+}
+
+function toggleAdminBenefitCustomValues(benefit, value) {
+  benefit.useCustomValues = value
+  normaliseAdminBenefitWindows(benefit)
+}
+
+function getBenefitValuePlaceholder(benefit) {
+  if (!benefit || benefit.type === 'cumulative') {
+    return 'Value'
+  }
+  if (!supportsCustomWindowValues(benefit.frequency)) {
+    return benefit.frequency === 'yearly' ? 'Value per year' : 'Value'
+  }
+  if (benefit.frequency === 'monthly') {
+    return 'Value per month'
+  }
+  if (benefit.frequency === 'quarterly') {
+    return 'Value per quarter'
+  }
+  if (benefit.frequency === 'semiannual') {
+    return 'Value per half-year'
+  }
+  return 'Value per window'
+}
+
+function handleAdminBenefitValueInput(benefit) {
+  if (
+    !benefit ||
+    benefit.type === 'cumulative' ||
+    !benefit.useCustomValues ||
+    !supportsCustomWindowValues(benefit.frequency)
+  ) {
+    return
+  }
+  normaliseAdminBenefitWindows(benefit)
+}
+
+function getAdminWindowOptions(frequency) {
+  if (frequency === 'monthly') {
+    return MONTH_LABELS
+  }
+  if (frequency === 'quarterly') {
+    return ['Quarter 1', 'Quarter 2', 'Quarter 3', 'Quarter 4']
+  }
+  if (frequency === 'semiannual') {
+    return ['First half', 'Second half']
+  }
+  return []
+}
+
 function openAdminCreateModal() {
   adminModal.mode = 'create'
   resetAdminModal()
@@ -282,10 +448,18 @@ function openAdminEditModal(card) {
     expected_value:
       benefit.type === 'cumulative' && benefit.expected_value != null
         ? benefit.expected_value.toString()
-        : ''
+        : '',
+    useCustomValues:
+      Array.isArray(benefit.window_values) && benefit.window_values.length > 0,
+    window_values: Array.isArray(benefit.window_values)
+      ? benefit.window_values.map((value) => value.toString())
+      : []
   }))
   if (!adminModal.form.benefits.length) {
     adminModal.form.benefits.push(createAdminBenefit())
+  }
+  for (const benefit of adminModal.form.benefits) {
+    normaliseAdminBenefitWindows(benefit)
   }
   error.value = ''
   adminModal.open = true
@@ -311,8 +485,11 @@ function removeAdminBenefit(index) {
 function handleAdminBenefitTypeChange(benefit) {
   if (benefit.type === 'cumulative') {
     benefit.value = ''
+    benefit.useCustomValues = false
+    benefit.window_values = []
   } else {
     benefit.expected_value = ''
+    normaliseAdminBenefitWindows(benefit)
   }
 }
 
@@ -337,6 +514,15 @@ async function submitAdminCard() {
         }
         if (benefit.type !== 'cumulative') {
           base.value = Number(benefit.value || 0)
+          if (benefit.useCustomValues && supportsCustomWindowValues(benefit.frequency)) {
+            const count = WINDOW_COUNTS[benefit.frequency] || 0
+            const windowValues = Array.isArray(benefit.window_values)
+              ? benefit.window_values.slice(0, count).map((value) => Number(value || 0))
+              : []
+            if (windowValues.length) {
+              base.window_values = windowValues
+            }
+          }
         } else {
           const rawExpected =
             typeof benefit.expected_value === 'string'
@@ -416,6 +602,13 @@ async function handleCreateCard() {
           }
         } else {
           benefitPayload.value = benefit.value
+          if (
+            Array.isArray(benefit.window_values) &&
+            benefit.window_values.length &&
+            supportsCustomWindowValues(benefit.frequency)
+          ) {
+            benefitPayload.window_values = benefit.window_values
+          }
         }
         if (benefitPayload.value === undefined) {
           delete benefitPayload.value
@@ -484,11 +677,15 @@ function resolveDefaultRedemptionAmount(benefit) {
   if (!benefit || benefit.type === 'cumulative') {
     return ''
   }
-  const baseValue = Number(benefit.value ?? 0)
+  const baseValue = Number(
+    benefit.current_window_value ?? getWindowValueForIndex(benefit, benefit.current_window_index ?? 1)
+  )
   if (!Number.isFinite(baseValue) || baseValue <= 0) {
     return ''
   }
-  const windowTotal = Number(benefit.current_window_total ?? benefit.cycle_redemption_total ?? 0)
+  const windowTotal = Number(
+    benefit.current_window_total ?? benefit.cycle_redemption_total ?? 0
+  )
   const remaining = Math.max(baseValue - windowTotal, 0)
   const suggested = remaining > 0 ? remaining : baseValue
   return suggested > 0 ? suggested.toFixed(2) : ''
@@ -778,9 +975,11 @@ async function populateBenefitWindows(card, benefit) {
       isWithinRange(entry.occurred_on, window.start, window.end)
     )
     const total = windowEntries.reduce((acc, entry) => acc + Number(entry.amount), 0)
+    const windowIndex = typeof window.index === 'number' ? window.index : windows.indexOf(window) + 1
+    const targetValue = getWindowValueForIndex(benefit, windowIndex)
     const remaining =
       benefit.type === 'incremental'
-        ? Math.max((benefit.value ?? 0) - total, 0)
+        ? Math.max(targetValue - total, 0)
         : null
     return {
       label: window.label,
@@ -832,7 +1031,7 @@ async function populateCardHistory(card) {
       let statusLabel = ''
       let statusTone = ''
       if (benefit.type === 'standard') {
-        potential = benefit.value ?? 0
+        potential = getCycleTargetValue(benefit)
         const used = Boolean(
           benefit.used_at && isWithinRange(benefit.used_at, cycle.start, cycle.end)
         )
@@ -840,7 +1039,7 @@ async function populateCardHistory(card) {
         statusLabel = used ? 'Utilized' : 'Available'
         statusTone = used ? 'success' : 'warning'
       } else if (benefit.type === 'incremental') {
-        potential = benefit.value ?? 0
+        potential = getCycleTargetValue(benefit)
         utilized = Math.min(total, potential)
         const isComplete = potential > 0 && utilized >= potential
         if (isComplete) {
@@ -855,7 +1054,7 @@ async function populateCardHistory(card) {
         }
         remaining = potential > 0 ? Math.max(potential - total, 0) : null
       } else {
-        potential = total
+        potential = getCycleTargetValue(benefit)
         utilized = total
         if (total > 0) {
           statusLabel = 'Tracking'
@@ -1519,7 +1718,10 @@ onMounted(async () => {
               <option value="incremental">Incremental</option>
               <option value="cumulative">Cumulative</option>
             </select>
-            <select v-model="benefit.frequency">
+            <select
+              v-model="benefit.frequency"
+              @change="handleAdminBenefitFrequencyChange(benefit)"
+            >
               <option v-for="option in frequencies" :key="option" :value="option">
                 {{ option.charAt(0).toUpperCase() + option.slice(1) }}
               </option>
@@ -1537,7 +1739,8 @@ onMounted(async () => {
               type="number"
               min="0"
               step="0.01"
-              placeholder="Value"
+              :placeholder="getBenefitValuePlaceholder(benefit)"
+              @input="handleAdminBenefitValueInput(benefit)"
               required
             />
             <input
@@ -1561,6 +1764,43 @@ onMounted(async () => {
               </svg>
               <span class="sr-only">Remove benefit</span>
             </button>
+          </div>
+          <div
+            v-if="benefit.type !== 'cumulative' && supportsCustomWindowValues(benefit.frequency)"
+            class="admin-custom-toggle"
+          >
+            <label class="checkbox-option">
+              <input
+                :checked="benefit.useCustomValues"
+                type="checkbox"
+                @change="toggleAdminBenefitCustomValues(benefit, $event.target.checked)"
+              />
+              <span>
+                Set custom values for each
+                {{ benefit.frequency === 'monthly'
+                  ? 'month'
+                  : benefit.frequency === 'quarterly'
+                    ? 'quarter'
+                    : 'half-year' }}
+              </span>
+            </label>
+          </div>
+          <div
+            v-if="benefit.type !== 'cumulative' && benefit.useCustomValues && supportsCustomWindowValues(benefit.frequency)"
+            class="admin-window-values"
+          >
+            <label
+              v-for="(label, windowIndex) in getAdminWindowOptions(benefit.frequency)"
+              :key="`${benefit.frequency}-${windowIndex}`"
+            >
+              <span>{{ label }}</span>
+              <input
+                v-model="benefit.window_values[windowIndex]"
+                type="number"
+                min="0"
+                step="0.01"
+              />
+            </label>
           </div>
           <p class="helper-text">{{ benefitTypeDescriptions[benefit.type] }}</p>
         </div>

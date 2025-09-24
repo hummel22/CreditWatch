@@ -28,17 +28,17 @@
         - [x] Chase Aeroplan
         - [x] Amex Platinum
         - [x] Capitoal One Venture X
-- [ ] History
-    - [ ] Each Credit UI Card should be showing the current year
-    - [ ] The current year is defined as either the time year bound be the AF due date or the calander year
-    - [ ] Each year will contain a list of benefits that applied to that year and those benefits will track the use history for that year
-    - [ ] Add option on card to set AF year or caldner year
-    - [ ] Add edit pencil icon to top rigt corner of cards and open update dialog box to edit credit card
-    - [ ] to the left of the pencil icon add a graph icon, hover will show history
-    - [ ] the histroy icon will open a new popup that will display a credit UI Card for each year that histroy is available for
-- [ ] Benefits should have an edit icon in the top right that opens a dialog to edit the benefit
-- [ ] recurring benefits will also have a histoy icon that will show a pop dialog with benefit UI card for each time window in that Credit card year.
-- [ ] the monthly, quartly and semiannual options should default the expiration dates unless a differnt date is provided (end of month, middle of year, quartarly dates, etc,) annual should have option to reset on year of on AF
+- [x] History
+    - [x] Each Credit UI Card should be showing the current year
+    - [x] The current year is defined as either the time year bound be the AF due date or the calander year
+    - [x] Each year will contain a list of benefits that applied to that year and those benefits will track the use history for that year
+    - [x] Add option on card to set AF year or caldner year
+    - [x] Add edit pencil icon to top rigt corner of cards and open update dialog box to edit credit card
+    - [x] to the left of the pencil icon add a graph icon, hover will show history
+    - [x] the histroy icon will open a new popup that will display a credit UI Card for each year that histroy is available for
+- [x] Benefits should have an edit icon in the top right that opens a dialog to edit the benefit
+- [x] recurring benefits will also have a histoy icon that will show a pop dialog with benefit UI card for each time window in that Credit card year.
+- [x] the monthly, quartly and semiannual options should default the expiration dates unless a differnt date is provided (end of month, middle of year, quartarly dates, etc,) annual should have option to reset on year of on AF
 
 
 

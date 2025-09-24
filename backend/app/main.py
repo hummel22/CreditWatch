@@ -8,11 +8,12 @@ from sqlmodel import Session
 
 from . import crud
 from .database import get_session, init_db
-from .models import Benefit, BenefitFrequency, BenefitType, CreditCard
+from .models import Benefit, BenefitFrequency, BenefitRedemption, BenefitType, CreditCard
 from .schemas import (
     BenefitCreate,
     BenefitRedemptionCreate,
     BenefitRedemptionRead,
+    BenefitRedemptionUpdate,
     BenefitRead,
     BenefitUpdate,
     BenefitUsageUpdate,
@@ -169,6 +170,33 @@ def create_benefit_redemption(
     return BenefitRedemptionRead.model_validate(created, from_attributes=True)
 
 
+@app.put(
+    "/api/redemptions/{redemption_id}",
+    response_model=BenefitRedemptionRead,
+)
+def update_benefit_redemption(
+    redemption_id: int,
+    payload: BenefitRedemptionUpdate,
+    session: Session = Depends(get_session),
+) -> BenefitRedemptionRead:
+    redemption = require_redemption(session, redemption_id)
+    updated = crud.update_benefit_redemption(session, redemption, payload)
+    return BenefitRedemptionRead.model_validate(updated, from_attributes=True)
+
+
+@app.delete(
+    "/api/redemptions/{redemption_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+def delete_benefit_redemption(
+    redemption_id: int, session: Session = Depends(get_session)
+) -> Response:
+    redemption = require_redemption(session, redemption_id)
+    crud.delete_benefit_redemption(session, redemption)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @app.delete(
     "/api/benefits/{benefit_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -225,6 +253,16 @@ def require_benefit(session: Session, benefit_id: int) -> Benefit:
             status_code=status.HTTP_404_NOT_FOUND, detail="Benefit not found"
         )
     return benefit
+
+
+def require_redemption(session: Session, redemption_id: int) -> BenefitRedemption:
+    redemption = crud.get_benefit_redemption(session, redemption_id)
+    if not redemption:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Redemption not found",
+        )
+    return redemption
 
 
 def build_benefit_read(

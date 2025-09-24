@@ -39,6 +39,14 @@
 - [x] Benefits should have an edit icon in the top right that opens a dialog to edit the benefit
 - [x] recurring benefits will also have a histoy icon that will show a pop dialog with benefit UI card for each time window in that Credit card year.
 - [x] the monthly, quartly and semiannual options should default the expiration dates unless a differnt date is provided (end of month, middle of year, quartarly dates, etc,) annual should have option to reset on year of on AF
+- [ ] Create a Header  Bar and then add add an admin page to the board. The admin board should be able to edit and add to prebuilt credit card configutations. these changes should update the .json files
+- [ ] Update the (edit,delete, history) icons to have a flat one color icon look
+- [ ] Benefits that are recurring should track the total value of the year and also the value for that month
+- [ ] The "View History"  should just be a hambuger icon
+- [ ] the benefits should take up two columns in a credit UI card
+- [ ] when adding a benefit add descripts for standard and incremental , just like there is for cumulative
+- [ ] For cumulative add an optional expected value
+
 
 
 

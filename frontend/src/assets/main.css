@@ -462,8 +462,21 @@ textarea {
   justify-content: center;
 }
 
+.benefits-collection {
+  margin-top: 1.5rem;
+}
+
+.benefits-collection-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.25rem;
+}
+
 @media (max-width: 760px) {
   .benefits-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .benefits-collection-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }

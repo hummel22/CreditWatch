@@ -1,15 +1,19 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import axios from 'axios'
+import BaseModal from './components/BaseModal.vue'
 import CreditCardList from './components/CreditCardList.vue'
 
 const cards = ref([])
 const loading = ref(false)
 const error = ref('')
-const frequencies = ref(['monthly', 'quarterly', 'yearly'])
+const frequencies = ref(['monthly', 'quarterly', 'semiannual', 'yearly'])
+
+const showCardModal = ref(false)
 
 const newCard = reactive({
   card_name: '',
+  company_name: '',
   last_four: '',
   account_name: '',
   annual_fee: '',
@@ -54,20 +58,27 @@ async function loadCards() {
 
 function resetNewCard() {
   newCard.card_name = ''
+  newCard.company_name = ''
   newCard.last_four = ''
   newCard.account_name = ''
   newCard.annual_fee = ''
   newCard.fee_due_date = ''
 }
 
+function closeCardModal() {
+  showCardModal.value = false
+  resetNewCard()
+}
+
 async function handleCreateCard() {
-  if (!newCard.card_name || newCard.last_four.length !== 4) {
-    error.value = 'Please provide a card name and the last four digits.'
+  if (!newCard.card_name || !newCard.company_name || newCard.last_four.length !== 4) {
+    error.value = 'Please provide a card name, company, and the last four digits.'
     return
   }
   try {
     const payload = {
       card_name: newCard.card_name,
+      company_name: newCard.company_name,
       last_four: newCard.last_four,
       account_name: newCard.account_name,
       annual_fee: Number(newCard.annual_fee || 0),
@@ -75,7 +86,7 @@ async function handleCreateCard() {
     }
     const response = await axios.post('/api/cards', payload)
     cards.value.push(response.data)
-    resetNewCard()
+    closeCardModal()
     error.value = ''
   } catch (err) {
     error.value = 'Could not create the card. Check the form data and try again.'
@@ -138,10 +149,27 @@ onMounted(async () => {
       </header>
 
       <section class="section-card">
-        <h2 class="section-title">Add a credit card</h2>
+        <div class="section-header">
+          <h2 class="section-title">Add a credit card</h2>
+          <button class="primary-button" type="button" @click="showCardModal = true">New card</button>
+        </div>
+        <p class="section-description">
+          Keep your issuer, account, and fee details in one place so you always know a card's value.
+        </p>
+      </section>
+
+      <BaseModal :open="showCardModal" title="Add a credit card" @close="closeCardModal">
         <form @submit.prevent="handleCreateCard">
           <div class="field-group">
             <input v-model="newCard.card_name" type="text" placeholder="Card name" required />
+            <input
+              v-model="newCard.company_name"
+              type="text"
+              placeholder="Company name (e.g., Chase, Amex)"
+              required
+            />
+          </div>
+          <div class="field-group">
             <input
               v-model="newCard.last_four"
               type="text"
@@ -150,15 +178,18 @@ onMounted(async () => {
               placeholder="Last four digits"
               required
             />
+            <input v-model="newCard.account_name" type="text" placeholder="Account name" required />
           </div>
           <div class="field-group">
-            <input v-model="newCard.account_name" type="text" placeholder="Account name" required />
             <input v-model="newCard.annual_fee" type="number" min="0" step="0.01" placeholder="Annual fee" />
             <input v-model="newCard.fee_due_date" type="date" required />
           </div>
-          <button class="primary-button" type="submit">Save card</button>
+          <div class="modal-actions">
+            <button class="primary-button secondary" type="button" @click="closeCardModal">Cancel</button>
+            <button class="primary-button" type="submit">Save card</button>
+          </div>
         </form>
-      </section>
+      </BaseModal>
 
       <section class="section-card">
         <h2 class="section-title">Portfolio overview</h2>

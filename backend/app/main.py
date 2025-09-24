@@ -139,6 +139,7 @@ def build_card_response(session: Session, card: CreditCard) -> CreditCardWithBen
     return CreditCardWithBenefits(
         id=card.id,
         card_name=card.card_name,
+        company_name=card.company_name,
         last_four=card.last_four,
         account_name=card.account_name,
         annual_fee=card.annual_fee,

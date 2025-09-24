@@ -1,6 +1,6 @@
 {
   "slug": "chase-aeroplan",
-  "card_type": "Aeroplan\u00ae Credit Card",
+  "card_type": "Aeroplan® Credit Card",
   "company_name": "Chase",
   "annual_fee": 95,
   "benefits": [
@@ -21,6 +21,12 @@
     {
       "name": "Aeroplan bonuses",
       "description": "Track milestone rewards and Elite Status boost earnings.",
+      "frequency": "yearly",
+      "type": "cumulative"
+    },
+    {
+      "name": "Points",
+      "description": "Track rewards points accrued throughout the year.",
       "frequency": "yearly",
       "type": "cumulative"
     }

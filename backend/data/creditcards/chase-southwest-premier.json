@@ -1,6 +1,6 @@
 {
   "slug": "chase-southwest-premier",
-  "card_type": "Southwest\u00ae Rapid Rewards\u00ae Premier Credit Card",
+  "card_type": "Southwest® Rapid Rewards® Premier Credit Card",
   "company_name": "Chase",
   "annual_fee": 99,
   "benefits": [
@@ -21,6 +21,12 @@
     {
       "name": "Companion pass progress",
       "description": "Add redemptions that count toward the Southwest Companion Pass.",
+      "frequency": "yearly",
+      "type": "cumulative"
+    },
+    {
+      "name": "Points",
+      "description": "Track rewards points accrued throughout the year.",
       "frequency": "yearly",
       "type": "cumulative"
     }

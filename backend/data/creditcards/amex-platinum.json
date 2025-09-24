@@ -1,6 +1,6 @@
 {
   "slug": "amex-platinum",
-  "card_type": "The Platinum Card\u00ae from American Express",
+  "card_type": "The Platinum Card® from American Express",
   "company_name": "American Express",
   "annual_fee": 695,
   "benefits": [
@@ -28,6 +28,12 @@
     {
       "name": "Amex Offers",
       "description": "Track cumulative savings from Amex Offers applied to the card.",
+      "frequency": "yearly",
+      "type": "cumulative"
+    },
+    {
+      "name": "Points",
+      "description": "Track rewards points accrued throughout the year.",
       "frequency": "yearly",
       "type": "cumulative"
     }

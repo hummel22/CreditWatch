@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from sqlalchemy import func
@@ -69,17 +69,23 @@ def update_benefit(session: Session, benefit: Benefit, payload: BenefitUpdate) -
     update_data = payload.model_dump(exclude_unset=True)
     value = update_data.pop("value", None)
     is_used = update_data.pop("is_used", None)
+    expected_value = update_data.pop("expected_value", None)
     new_type = update_data.get("type")
 
     if new_type and new_type != benefit.type:
         benefit.is_used = False
         benefit.used_at = None
+        if new_type != BenefitType.cumulative:
+            benefit.expected_value = None
 
     for key, item in update_data.items():
         setattr(benefit, key, item)
 
     if value is not None:
         benefit.value = value
+
+    if "expected_value" in payload.model_fields_set:
+        benefit.expected_value = expected_value
 
     if is_used is not None and benefit.type == BenefitType.standard:
         benefit.is_used = is_used
@@ -160,7 +166,10 @@ def list_benefit_redemptions(session: Session, benefit_id: int) -> List[BenefitR
 
 
 def redemption_summary_for_benefits(
-    session: Session, benefit_ids: Sequence[int]
+    session: Session,
+    benefit_ids: Sequence[int],
+    start_date: date | None = None,
+    end_date: date | None = None,
 ) -> Dict[int, Tuple[float, int]]:
     if not benefit_ids:
         return {}
@@ -173,6 +182,10 @@ def redemption_summary_for_benefits(
         .where(BenefitRedemption.benefit_id.in_(benefit_ids))
         .group_by(BenefitRedemption.benefit_id)
     )
+    if start_date is not None:
+        statement = statement.where(BenefitRedemption.occurred_on >= start_date)
+    if end_date is not None:
+        statement = statement.where(BenefitRedemption.occurred_on < end_date)
     results = session.exec(statement).all()
     return {benefit_id: (float(total), int(count)) for benefit_id, total, count in results}
 

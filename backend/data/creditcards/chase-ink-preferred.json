@@ -1,6 +1,6 @@
 {
   "slug": "chase-ink-preferred",
-  "card_type": "Ink Business Preferred\u00ae Credit Card",
+  "card_type": "Ink Business Preferred® Credit Card",
   "company_name": "Chase",
   "annual_fee": 95,
   "benefits": [
@@ -23,6 +23,12 @@
       "frequency": "yearly",
       "type": "standard",
       "value": 150
+    },
+    {
+      "name": "Points",
+      "description": "Track rewards points accrued throughout the year.",
+      "frequency": "yearly",
+      "type": "cumulative"
     }
   ]
 }

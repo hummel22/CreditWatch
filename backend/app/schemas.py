@@ -15,6 +15,7 @@ class BenefitBase(SQLModel):
     frequency: BenefitFrequency
     type: BenefitType = Field(default=BenefitType.standard)
     value: Optional[float] = Field(default=None, ge=0)
+    expected_value: Optional[float] = Field(default=None, ge=0)
     expiration_date: Optional[date] = None
 
 
@@ -27,6 +28,8 @@ class BenefitCreate(BenefitBase):
             )
         if values.type == BenefitType.cumulative and values.value not in (None, 0):
             raise ValueError("Cumulative benefits should not define an initial value.")
+        if values.type != BenefitType.cumulative and values.expected_value not in (None, 0):
+            raise ValueError("Expected value is only supported for cumulative benefits.")
         return values
 
 
@@ -38,6 +41,7 @@ class BenefitUpdate(SQLModel):
     value: Optional[float] = Field(default=None, ge=0)
     expiration_date: Optional[date] = None
     is_used: Optional[bool] = None
+    expected_value: Optional[float] = Field(default=None, ge=0)
 
 
 class BenefitUsageUpdate(SQLModel):
@@ -53,6 +57,10 @@ class BenefitRead(BenefitBase):
     redemption_total: float = Field(default=0, ge=0)
     redemption_count: int = Field(default=0, ge=0)
     remaining_value: Optional[float] = Field(default=None, ge=0)
+    cycle_redemption_total: float = Field(default=0, ge=0)
+    cycle_label: Optional[str] = None
+    current_window_total: Optional[float] = Field(default=None, ge=0)
+    current_window_label: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -121,12 +129,44 @@ class CreditCardWithBenefits(CreditCardRead):
     model_config = ConfigDict(from_attributes=True)
 
 
-class PreconfiguredBenefitRead(SQLModel):
+class PreconfiguredBenefitBase(SQLModel):
     name: str
     description: Optional[str] = None
     frequency: BenefitFrequency
     type: BenefitType = Field(default=BenefitType.standard)
     value: Optional[float] = Field(default=None, ge=0)
+    expected_value: Optional[float] = Field(default=None, ge=0)
+
+
+class PreconfiguredBenefitCreate(PreconfiguredBenefitBase):
+    @model_validator(mode="after")
+    def validate_value(
+        cls, values: "PreconfiguredBenefitCreate"
+    ) -> "PreconfiguredBenefitCreate":  # type: ignore[name-defined]
+        if values.type != BenefitType.cumulative and (values.value is None or values.value <= 0):
+            raise ValueError(
+                "A positive value is required for standard and incremental benefits."
+            )
+        if values.type == BenefitType.cumulative and values.value not in (None, 0):
+            raise ValueError("Cumulative benefits should not define an initial value.")
+        if values.type != BenefitType.cumulative and values.expected_value not in (None, 0):
+            raise ValueError("Expected value is only supported for cumulative benefits.")
+        return values
+
+
+class PreconfiguredBenefitRead(PreconfiguredBenefitBase):
+    pass
+
+
+class PreconfiguredCardBase(SQLModel):
+    card_type: str
+    company_name: str
+    annual_fee: float = Field(ge=0)
+    benefits: List[PreconfiguredBenefitCreate]
+
+
+class PreconfiguredCardWrite(PreconfiguredCardBase):
+    slug: Optional[str] = None
 
 
 class PreconfiguredCardRead(SQLModel):

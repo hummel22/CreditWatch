@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import axios from 'axios'
 import BaseModal from './components/BaseModal.vue'
 import CreditCardList from './components/CreditCardList.vue'
@@ -8,6 +8,7 @@ const cards = ref([])
 const loading = ref(false)
 const error = ref('')
 const frequencies = ref(['monthly', 'quarterly', 'semiannual', 'yearly'])
+const preconfiguredCards = ref([])
 
 const showCardModal = ref(false)
 
@@ -18,6 +19,37 @@ const newCard = reactive({
   account_name: '',
   annual_fee: '',
   fee_due_date: ''
+})
+
+const selectedTemplateSlug = ref('')
+const selectedTemplate = computed(() =>
+  preconfiguredCards.value.find((card) => card.slug === selectedTemplateSlug.value)
+)
+
+watch(
+  selectedTemplate,
+  (template) => {
+    if (template) {
+      newCard.card_name = template.card_type
+      newCard.company_name = template.company_name
+      newCard.annual_fee = template.annual_fee.toString()
+    }
+  }
+)
+
+const redemptionModal = reactive({
+  open: false,
+  benefit: null,
+  label: '',
+  amount: '',
+  occurred_on: ''
+})
+
+const historyModal = reactive({
+  open: false,
+  benefit: null,
+  entries: [],
+  loading: false
 })
 
 const totals = computed(() => {
@@ -56,6 +88,17 @@ async function loadCards() {
   }
 }
 
+async function loadPreconfiguredCards() {
+  try {
+    const response = await axios.get('/api/preconfigured/cards')
+    if (Array.isArray(response.data)) {
+      preconfiguredCards.value = response.data
+    }
+  } catch (err) {
+    console.warn('Unable to load preconfigured cards.', err)
+  }
+}
+
 function resetNewCard() {
   newCard.card_name = ''
   newCard.company_name = ''
@@ -63,6 +106,7 @@ function resetNewCard() {
   newCard.account_name = ''
   newCard.annual_fee = ''
   newCard.fee_due_date = ''
+  selectedTemplateSlug.value = ''
 }
 
 function closeCardModal() {
@@ -85,7 +129,26 @@ async function handleCreateCard() {
       fee_due_date: newCard.fee_due_date
     }
     const response = await axios.post('/api/cards', payload)
-    cards.value.push(response.data)
+    const template = selectedTemplate.value
+    if (template) {
+      for (const benefit of template.benefits) {
+        const benefitPayload = {
+          name: benefit.name,
+          description: benefit.description || null,
+          frequency: benefit.frequency,
+          type: benefit.type,
+          value: benefit.type === 'cumulative' ? undefined : benefit.value,
+          expiration_date: null
+        }
+        if (benefitPayload.value === undefined) {
+          delete benefitPayload.value
+        }
+        await axios.post(`/api/cards/${response.data.id}/benefits`, benefitPayload)
+      }
+      await loadCards()
+    } else {
+      cards.value.push(response.data)
+    }
     closeCardModal()
     error.value = ''
   } catch (err) {
@@ -95,7 +158,11 @@ async function handleCreateCard() {
 
 async function handleAddBenefit({ cardId, payload }) {
   try {
-    await axios.post(`/api/cards/${cardId}/benefits`, payload)
+    const body = { ...payload }
+    if (body.value === undefined) {
+      delete body.value
+    }
+    await axios.post(`/api/cards/${cardId}/benefits`, body)
     const refreshed = await axios.get('/api/cards')
     cards.value = refreshed.data
   } catch (err) {
@@ -132,8 +199,65 @@ async function handleDeleteCard(cardId) {
   }
 }
 
+function handleAddRedemption(benefit) {
+  redemptionModal.open = true
+  redemptionModal.benefit = benefit
+  redemptionModal.label = ''
+  redemptionModal.amount = ''
+  const today = new Date().toISOString().slice(0, 10)
+  redemptionModal.occurred_on = today
+}
+
+function closeRedemptionModal() {
+  redemptionModal.open = false
+  redemptionModal.benefit = null
+}
+
+async function submitRedemption() {
+  if (!redemptionModal.benefit || !redemptionModal.amount) {
+    return
+  }
+  try {
+    const amount = Number(redemptionModal.amount)
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return
+    }
+    await axios.post(`/api/benefits/${redemptionModal.benefit.id}/redemptions`, {
+      label: redemptionModal.label || 'Redemption',
+      amount,
+      occurred_on: redemptionModal.occurred_on
+    })
+    await loadCards()
+    closeRedemptionModal()
+  } catch (err) {
+    error.value = 'Unable to record the redemption.'
+  }
+}
+
+async function handleViewHistory(benefit) {
+  historyModal.open = true
+  historyModal.benefit = benefit
+  historyModal.entries = []
+  historyModal.loading = true
+  try {
+    const response = await axios.get(`/api/benefits/${benefit.id}/redemptions`)
+    historyModal.entries = Array.isArray(response.data) ? response.data : []
+  } catch (err) {
+    error.value = 'Unable to load redemption history.'
+  } finally {
+    historyModal.loading = false
+  }
+}
+
+function closeHistoryModal() {
+  historyModal.open = false
+  historyModal.benefit = null
+  historyModal.entries = []
+}
+
 onMounted(async () => {
   await loadFrequencies()
+  await loadPreconfiguredCards()
   await loadCards()
 })
 </script>
@@ -160,6 +284,22 @@ onMounted(async () => {
 
       <BaseModal :open="showCardModal" title="Add a credit card" @close="closeCardModal">
         <form @submit.prevent="handleCreateCard">
+          <div class="field-group">
+            <select v-model="selectedTemplateSlug">
+              <option value="">Select a preconfigured card (optional)</option>
+              <option
+                v-for="card in preconfiguredCards"
+                :key="card.slug"
+                :value="card.slug"
+              >
+                {{ card.card_type }} · {{ card.company_name }}
+              </option>
+            </select>
+          </div>
+          <p v-if="selectedTemplate" class="helper-text">
+            Benefits from the selected template will be added automatically after the card
+            is created.
+          </p>
           <div class="field-group">
             <input v-model="newCard.card_name" type="text" placeholder="Card name" required />
             <input
@@ -215,6 +355,8 @@ onMounted(async () => {
             @toggle-benefit="handleToggleBenefit"
             @delete-benefit="handleDeleteBenefit"
             @delete-card="handleDeleteCard"
+            @add-redemption="handleAddRedemption"
+            @view-history="handleViewHistory"
           />
         </div>
       </section>
@@ -224,4 +366,60 @@ onMounted(async () => {
       </p>
     </div>
   </main>
+
+  <BaseModal
+    :open="redemptionModal.open"
+    :title="redemptionModal.benefit ? `Add redemption · ${redemptionModal.benefit.name}` : 'Add redemption'"
+    @close="closeRedemptionModal"
+  >
+    <form @submit.prevent="submitRedemption">
+      <input
+        v-model="redemptionModal.label"
+        type="text"
+        placeholder="Description"
+      />
+      <div class="field-group">
+        <input
+          v-model="redemptionModal.amount"
+          type="number"
+          min="0"
+          step="0.01"
+          placeholder="Amount"
+          required
+        />
+        <input v-model="redemptionModal.occurred_on" type="date" required />
+      </div>
+      <div class="modal-actions">
+        <button class="primary-button secondary" type="button" @click="closeRedemptionModal">
+          Cancel
+        </button>
+        <button class="primary-button" type="submit">Save redemption</button>
+      </div>
+    </form>
+  </BaseModal>
+
+  <BaseModal
+    :open="historyModal.open"
+    :title="historyModal.benefit ? `Redemption history · ${historyModal.benefit.name}` : 'Redemption history'"
+    @close="closeHistoryModal"
+  >
+    <div v-if="historyModal.loading" class="history-loading">Loading history...</div>
+    <table v-else-if="historyModal.entries.length" class="history-table">
+      <thead>
+        <tr>
+          <th scope="col">Date</th>
+          <th scope="col">Description</th>
+          <th scope="col">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="entry in historyModal.entries" :key="entry.id">
+          <td>{{ new Date(entry.occurred_on).toLocaleDateString() }}</td>
+          <td>{{ entry.label }}</td>
+          <td>${{ Number(entry.amount).toFixed(2) }}</td>
+        </tr>
+      </tbody>
+    </table>
+    <p v-else class="empty-state">No redemptions recorded yet.</p>
+  </BaseModal>
 </template>

@@ -1,0 +1,28 @@
+{
+  "slug": "chase-ihg-premier",
+  "card_type": "IHG\u00ae Rewards Premier Credit Card",
+  "company_name": "Chase",
+  "annual_fee": 99,
+  "benefits": [
+    {
+      "name": "Free night certificate",
+      "description": "Track the annual free night certificate (up to 40k points).",
+      "frequency": "yearly",
+      "type": "standard",
+      "value": 200
+    },
+    {
+      "name": "IHG statement credits",
+      "description": "Quarterly statement credits toward IHG purchases.",
+      "frequency": "quarterly",
+      "type": "incremental",
+      "value": 100
+    },
+    {
+      "name": "IHG promotions",
+      "description": "Log savings from targeted IHG offers and promotions.",
+      "frequency": "yearly",
+      "type": "cumulative"
+    }
+  ]
+}

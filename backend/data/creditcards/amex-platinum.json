@@ -1,0 +1,35 @@
+{
+  "slug": "amex-platinum",
+  "card_type": "The Platinum Card\u00ae from American Express",
+  "company_name": "American Express",
+  "annual_fee": 695,
+  "benefits": [
+    {
+      "name": "Uber Cash",
+      "description": "$15 monthly credits plus $35 in December for rides or eats.",
+      "frequency": "monthly",
+      "type": "incremental",
+      "value": 200
+    },
+    {
+      "name": "Saks Fifth Avenue credits",
+      "description": "$50 credits twice per year at Saks Fifth Avenue.",
+      "frequency": "semiannual",
+      "type": "incremental",
+      "value": 100
+    },
+    {
+      "name": "Airline incidental credits",
+      "description": "$200 annual airline fee credit.",
+      "frequency": "yearly",
+      "type": "incremental",
+      "value": 200
+    },
+    {
+      "name": "Amex Offers",
+      "description": "Track cumulative savings from Amex Offers applied to the card.",
+      "frequency": "yearly",
+      "type": "cumulative"
+    }
+  ]
+}

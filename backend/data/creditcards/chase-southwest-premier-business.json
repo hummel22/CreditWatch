@@ -1,0 +1,28 @@
+{
+  "slug": "chase-southwest-premier-business",
+  "card_type": "Southwest\u00ae Rapid Rewards\u00ae Premier Business Credit Card",
+  "company_name": "Chase",
+  "annual_fee": 99,
+  "benefits": [
+    {
+      "name": "Anniversary points bonus",
+      "description": "6,000 Rapid Rewards points deposited on each card anniversary.",
+      "frequency": "yearly",
+      "type": "standard",
+      "value": 90
+    },
+    {
+      "name": "Travel credits",
+      "description": "Annual statement credits for Wi-Fi and in-flight purchases.",
+      "frequency": "yearly",
+      "type": "incremental",
+      "value": 100
+    },
+    {
+      "name": "Southwest offers",
+      "description": "Track ad-hoc savings earned from limited-time Southwest offers.",
+      "frequency": "yearly",
+      "type": "cumulative"
+    }
+  ]
+}

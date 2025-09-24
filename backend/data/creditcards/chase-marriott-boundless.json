@@ -1,0 +1,28 @@
+{
+  "slug": "chase-marriott-boundless",
+  "card_type": "Marriott Bonvoy Boundless\u00ae Credit Card",
+  "company_name": "Chase",
+  "annual_fee": 95,
+  "benefits": [
+    {
+      "name": "Free night certificate",
+      "description": "35,000-point free night certificate each anniversary.",
+      "frequency": "yearly",
+      "type": "standard",
+      "value": 200
+    },
+    {
+      "name": "Marriott statement credits",
+      "description": "Track $25 monthly dining credits from Marriott properties.",
+      "frequency": "monthly",
+      "type": "incremental",
+      "value": 300
+    },
+    {
+      "name": "Marriott offers",
+      "description": "Capture targeted Amex or Chase offers applied to the card.",
+      "frequency": "yearly",
+      "type": "cumulative"
+    }
+  ]
+}

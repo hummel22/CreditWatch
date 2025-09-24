@@ -1,0 +1,35 @@
+{
+  "slug": "capital-one-venture-x",
+  "card_type": "Capital One Venture X Rewards Credit Card",
+  "company_name": "Capital One",
+  "annual_fee": 395,
+  "benefits": [
+    {
+      "name": "Capital One Travel credit",
+      "description": "$300 annual credit for bookings made through Capital One Travel.",
+      "frequency": "yearly",
+      "type": "incremental",
+      "value": 300
+    },
+    {
+      "name": "Anniversary miles bonus",
+      "description": "10,000 anniversary miles each account anniversary (valued at 1\u00a2 per mile).",
+      "frequency": "yearly",
+      "type": "standard",
+      "value": 100
+    },
+    {
+      "name": "Cell phone protection",
+      "description": "Coverage for damaged or stolen phones when you pay your bill with the card.",
+      "frequency": "yearly",
+      "type": "incremental",
+      "value": 800
+    },
+    {
+      "name": "Capital One offers",
+      "description": "Track statement credits earned from Capital One Offers.",
+      "frequency": "yearly",
+      "type": "cumulative"
+    }
+  ]
+}

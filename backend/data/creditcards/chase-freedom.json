@@ -1,0 +1,28 @@
+{
+  "slug": "chase-freedom",
+  "card_type": "Chase Freedom\u00ae",
+  "company_name": "Chase",
+  "annual_fee": 0,
+  "benefits": [
+    {
+      "name": "5% rotating categories",
+      "description": "Track the cash back earned each quarter in the rotating bonus categories.",
+      "frequency": "quarterly",
+      "type": "incremental",
+      "value": 75
+    },
+    {
+      "name": "Shop Through Chase deals",
+      "description": "Cash back earned from limited-time merchant offers.",
+      "frequency": "yearly",
+      "type": "cumulative"
+    },
+    {
+      "name": "Purchase protection",
+      "description": "Extended warranty and purchase protection coverage valued annually.",
+      "frequency": "yearly",
+      "type": "standard",
+      "value": 100
+    }
+  ]
+}

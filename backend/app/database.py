@@ -17,6 +17,7 @@ def init_db() -> None:
 
     SQLModel.metadata.create_all(engine)
     ensure_company_name_column()
+    ensure_benefit_type_column()
 
 
 def ensure_company_name_column() -> None:
@@ -29,6 +30,23 @@ def ensure_company_name_column() -> None:
         if "company_name" not in existing_columns:
             connection.exec_driver_sql(
                 "ALTER TABLE creditcard ADD COLUMN company_name VARCHAR NOT NULL DEFAULT ''"
+            )
+
+
+def ensure_benefit_type_column() -> None:
+    """Ensure benefit tables contain new tracking metadata columns."""
+
+    with engine.connect() as connection:
+        existing_columns = {
+            row[1] for row in connection.exec_driver_sql("PRAGMA table_info(benefit)")
+        }
+        if "type" not in existing_columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE benefit ADD COLUMN type VARCHAR NOT NULL DEFAULT 'standard'"
+            )
+        if "value" not in existing_columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE benefit ADD COLUMN value FLOAT NOT NULL DEFAULT 0"
             )
 
 

@@ -1,0 +1,35 @@
+{
+  "slug": "chase-united-club",
+  "card_type": "United Club\u2122 Infinite Card",
+  "company_name": "Chase",
+  "annual_fee": 525,
+  "benefits": [
+    {
+      "name": "United Club membership",
+      "description": "Full United Club lounge access valuation.",
+      "frequency": "yearly",
+      "type": "standard",
+      "value": 550
+    },
+    {
+      "name": "TravelBank cash credits",
+      "description": "$125 TravelBank cash credited each account year.",
+      "frequency": "yearly",
+      "type": "incremental",
+      "value": 125
+    },
+    {
+      "name": "TSA PreCheck or Global Entry",
+      "description": "Credit for TSA PreCheck or Global Entry enrollment.",
+      "frequency": "yearly",
+      "type": "standard",
+      "value": 100
+    },
+    {
+      "name": "United offers",
+      "description": "Track promotional savings from United cardmember offers.",
+      "frequency": "yearly",
+      "type": "cumulative"
+    }
+  ]
+}

@@ -138,6 +138,11 @@ textarea {
   color: #b91c1c;
 }
 
+.tag.info {
+  background: rgba(59, 130, 246, 0.12);
+  color: #2563eb;
+}
+
 .benefits-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -192,6 +197,34 @@ textarea {
   justify-content: space-between;
   align-items: center;
   gap: 0.5rem;
+}
+
+.helper-text {
+  margin: 0.5rem 0 1rem;
+  font-size: 0.85rem;
+  color: #475569;
+}
+
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}
+
+.history-table th,
+.history-table td {
+  padding: 0.6rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+.history-table tbody tr:nth-child(even) {
+  background-color: rgba(241, 245, 249, 0.5);
+}
+
+.history-loading {
+  font-size: 0.9rem;
+  color: #475569;
 }
 
 .primary-button {

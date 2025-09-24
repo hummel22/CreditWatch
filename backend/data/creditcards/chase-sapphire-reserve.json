@@ -1,0 +1,35 @@
+{
+  "slug": "chase-sapphire-reserve",
+  "card_type": "Chase Sapphire Reserve\u00ae",
+  "company_name": "Chase",
+  "annual_fee": 550,
+  "benefits": [
+    {
+      "name": "Annual travel credit",
+      "description": "$300 travel credit that resets each cardmember year.",
+      "frequency": "yearly",
+      "type": "incremental",
+      "value": 300
+    },
+    {
+      "name": "DoorDash credits",
+      "description": "$5 monthly DoorDash credits (DoorDash and Caviar orders).",
+      "frequency": "monthly",
+      "type": "incremental",
+      "value": 60
+    },
+    {
+      "name": "Lyft Pink membership",
+      "description": "Annual valuation of the included Lyft Pink All Access membership.",
+      "frequency": "yearly",
+      "type": "standard",
+      "value": 199
+    },
+    {
+      "name": "Chase Offers",
+      "description": "Record savings from Chase Offers applied to Sapphire Reserve purchases.",
+      "frequency": "yearly",
+      "type": "cumulative"
+    }
+  ]
+}

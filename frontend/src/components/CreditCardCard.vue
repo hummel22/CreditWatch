@@ -9,6 +9,7 @@ import {
   formatDateInput,
   parseDate
 } from '../utils/dates'
+import { sortBenefits } from '../utils/benefits'
 
 const props = defineProps({
   card: {
@@ -46,23 +47,7 @@ const defaultYearAlignment = computed(() =>
   props.card.year_tracking_mode === 'anniversary' ? 'anniversary' : 'calendar'
 )
 
-const sortedBenefits = computed(() => {
-  const benefits = Array.isArray(props.card.benefits) ? [...props.card.benefits] : []
-  return benefits.sort((a, b) => {
-    const parsedA = a.expiration_date ? parseDate(a.expiration_date) : null
-    const parsedB = b.expiration_date ? parseDate(b.expiration_date) : null
-    const timeA = parsedA instanceof Date && !Number.isNaN(parsedA.getTime())
-      ? parsedA.getTime()
-      : Number.POSITIVE_INFINITY
-    const timeB = parsedB instanceof Date && !Number.isNaN(parsedB.getTime())
-      ? parsedB.getTime()
-      : Number.POSITIVE_INFINITY
-    if (timeA === timeB) {
-      return a.name.localeCompare(b.name)
-    }
-    return timeA - timeB
-  })
-})
+const sortedBenefits = computed(() => sortBenefits(props.card.benefits))
 
 const form = reactive({
   name: '',

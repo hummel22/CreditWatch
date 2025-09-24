@@ -5,6 +5,14 @@ const props = defineProps({
   benefit: {
     type: Object,
     required: true
+  },
+  cardContext: {
+    type: Object,
+    default: null
+  },
+  showEdit: {
+    type: Boolean,
+    default: true
   }
 })
 
@@ -52,6 +60,18 @@ const frequencyLabel = computed(() => {
 })
 
 const currentWindowLabel = computed(() => props.benefit.current_window_label || '')
+
+const cardLabel = computed(() => {
+  if (!props.cardContext) {
+    return ''
+  }
+  const name = props.cardContext.name || props.cardContext.card_name || ''
+  const company = props.cardContext.company || props.cardContext.company_name || ''
+  if (name && company) {
+    return `${name} · ${company}`
+  }
+  return name || company || ''
+})
 
 const expirationLabel = computed(() => {
   if (!props.benefit.expiration_date) {
@@ -114,6 +134,7 @@ const isRecurringBenefit = computed(() =>
     <header class="benefit-header">
       <div class="benefit-header__primary">
         <div class="benefit-name">{{ benefit.name }}</div>
+        <div v-if="cardLabel" class="benefit-card__context">{{ cardLabel }}</div>
         <div class="benefit-meta-row">
           <div class="benefit-meta">
             <div class="benefit-meta-line">
@@ -141,6 +162,7 @@ const isRecurringBenefit = computed(() =>
           <span class="sr-only">View recurring history</span>
         </button>
         <button
+          v-if="showEdit"
           class="icon-button ghost"
           type="button"
           @click="emit('edit', benefit)"
@@ -291,6 +313,12 @@ const isRecurringBenefit = computed(() =>
 
 .benefit-name {
   overflow-wrap: anywhere;
+}
+
+.benefit-card__context {
+  font-size: 0.72rem;
+  color: #64748b;
+  font-weight: 500;
 }
 
 .benefit-meta-row {

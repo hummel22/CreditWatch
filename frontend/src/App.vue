@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import axios from 'axios'
 import BaseModal from './components/BaseModal.vue'
+import BenefitCard from './components/BenefitCard.vue'
 import CreditCardList from './components/CreditCardList.vue'
 import {
   buildCardCycles,
@@ -10,6 +11,7 @@ import {
   isWithinRange,
   parseDate
 } from './utils/dates'
+import { compareBenefits } from './utils/benefits'
 
 const cards = ref([])
 const loading = ref(false)
@@ -21,9 +23,12 @@ const currentView = ref('dashboard')
 const navDrawerOpen = ref(false)
 const navItems = [
   { id: 'dashboard', label: 'Dashboard' },
+  { id: 'benefits', label: 'Benefits' },
   { id: 'admin', label: 'Admin' }
 ]
 
+const isDashboardView = computed(() => currentView.value === 'dashboard')
+const isBenefitsView = computed(() => currentView.value === 'benefits')
 const isAdminView = computed(() => currentView.value === 'admin')
 
 function setView(view) {
@@ -178,6 +183,19 @@ const totals = computed(() => {
     potential,
     net: utilized - annualFees
   }
+})
+
+const benefitsCollection = computed(() => {
+  const entries = []
+  for (const card of cards.value) {
+    if (!Array.isArray(card.benefits)) {
+      continue
+    }
+    for (const benefit of card.benefits) {
+      entries.push({ card, benefit })
+    }
+  }
+  return entries.sort((a, b) => compareBenefits(a.benefit, b.benefit))
 })
 
 async function loadFrequencies() {
@@ -1024,7 +1042,7 @@ onMounted(async () => {
         </p>
       </section>
 
-      <template v-if="!isAdminView">
+      <template v-if="isDashboardView">
         <section class="section-card content-constrained">
           <h2 class="section-title">Portfolio overview</h2>
           <div class="summary-row">
@@ -1058,6 +1076,44 @@ onMounted(async () => {
               @view-card-history="handleViewCardHistory"
               @view-benefit-windows="handleViewBenefitWindows"
             />
+          </div>
+        </section>
+      </template>
+
+      <template v-else-if="isBenefitsView">
+        <section class="cards-section">
+          <div class="content-constrained">
+            <div class="section-header">
+              <div>
+                <h2 class="section-title">All benefits</h2>
+                <p class="section-description">
+                  Review every benefit across your cards in a single view.
+                </p>
+              </div>
+            </div>
+            <p v-if="loading" class="empty-state">Loading benefits...</p>
+            <p v-else-if="!benefitsCollection.length" class="empty-state">
+              No benefits to display yet. Add benefits to your cards to see them here.
+            </p>
+          </div>
+          <div
+            v-if="!loading && benefitsCollection.length"
+            class="benefits-collection content-constrained"
+          >
+            <div class="benefits-collection-grid">
+              <BenefitCard
+                v-for="entry in benefitsCollection"
+                :key="entry.benefit.id"
+                :benefit="entry.benefit"
+                :card-context="{ name: entry.card.card_name, company: entry.card.company_name }"
+                :show-edit="false"
+                @toggle="(value) => handleToggleBenefit({ id: entry.benefit.id, value })"
+                @delete="() => handleDeleteBenefit(entry.benefit.id)"
+                @add-redemption="() => handleAddRedemption({ card: entry.card, benefit: entry.benefit })"
+                @view-history="() => handleViewHistory({ card: entry.card, benefit: entry.benefit })"
+                @view-windows="() => handleViewBenefitWindows({ card: entry.card, benefit: entry.benefit })"
+              />
+            </div>
           </div>
         </section>
       </template>

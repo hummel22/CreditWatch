@@ -43,6 +43,25 @@ const statusTag = computed(() => {
   return { label: 'Tracking', tone: 'info' }
 })
 
+const timeWindowLabel = computed(() => {
+  if (props.benefit.current_window_label) {
+    return props.benefit.current_window_label
+  }
+  if (props.benefit.frequency === 'yearly') {
+    if (props.benefit.cycle_label) {
+      return props.benefit.cycle_label.includes('-')
+        ? `Cycle ${props.benefit.cycle_label}`
+        : `Year ${props.benefit.cycle_label}`
+    }
+    return 'Yearly cycle'
+  }
+  const frequency = props.benefit.frequency
+  if (!frequency) {
+    return ''
+  }
+  return frequency.charAt(0).toUpperCase() + frequency.slice(1)
+})
+
 const expirationLabel = computed(() => {
   if (!props.benefit.expiration_date) {
     return 'No expiration set'
@@ -140,46 +159,48 @@ const recurringPotentialCopy = computed(() => {
 <template>
   <article class="benefit-card" :class="{ used: benefit.is_used }">
     <header class="benefit-header">
-      <div>
+      <div class="benefit-header__primary">
         <div class="benefit-name">{{ benefit.name }}</div>
-        <div class="benefit-type">{{ typeLabel }}</div>
-        <div class="benefit-frequency">{{ benefit.frequency }}</div>
+        <div class="benefit-meta-row">
+          <div class="benefit-meta">
+            <span class="benefit-type">{{ typeLabel }}</span>
+            <span v-if="timeWindowLabel" class="benefit-window">{{ timeWindowLabel }}</span>
+          </div>
+          <div class="tag" :class="statusTag.tone">
+            <span>{{ statusTag.label }}</span>
+          </div>
+        </div>
       </div>
-      <div class="benefit-header__meta">
-        <div class="tag" :class="statusTag.tone">
-          <span>{{ statusTag.label }}</span>
-        </div>
-        <div class="benefit-icons">
-          <button
-            v-if="isRecurringBenefit"
-            class="icon-button ghost"
-            type="button"
-            @click="emit('view-windows', benefit)"
-            title="View recurring history"
-          >
-            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              <path d="M4 16h2V9H4v7zm5 0h2V4H9v12zm5 0h2v-5h-2v5z" />
-            </svg>
-            <span class="sr-only">View recurring history</span>
-          </button>
-          <button
-            class="icon-button ghost"
-            type="button"
-            @click="emit('edit', benefit)"
-            title="Edit benefit"
-          >
-            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              <path d="M15.58 2.42a1.5 1.5 0 0 0-2.12 0l-9 9V17h5.59l9-9a1.5 1.5 0 0 0 0-2.12zM7 15H5v-2l6.88-6.88 2 2z" />
-            </svg>
-            <span class="sr-only">Edit benefit</span>
-          </button>
-          <button class="icon-button danger" type="button" @click="emit('delete')" title="Remove benefit">
-            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              <path d="M7 3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1h3.5a.5.5 0 0 1 0 1h-.8l-.62 11a2 2 0 0 1-2 1.9H6.92a2 2 0 0 1-2-1.9L4.3 5H3.5a.5.5 0 0 1 0-1H7zm1 1h4V3H8zM6.3 5l.6 10.8a1 1 0 0 0 1 1h4.2a1 1 0 0 0 1-1L13.7 5z" />
-            </svg>
-            <span class="sr-only">Remove benefit</span>
-          </button>
-        </div>
+      <div class="benefit-icons">
+        <button
+          v-if="isRecurringBenefit"
+          class="icon-button ghost"
+          type="button"
+          @click="emit('view-windows', benefit)"
+          title="View recurring history"
+        >
+          <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path d="M4 16h2V9H4v7zm5 0h2V4H9v12zm5 0h2v-5h-2v5z" />
+          </svg>
+          <span class="sr-only">View recurring history</span>
+        </button>
+        <button
+          class="icon-button ghost"
+          type="button"
+          @click="emit('edit', benefit)"
+          title="Edit benefit"
+        >
+          <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path d="M15.58 2.42a1.5 1.5 0 0 0-2.12 0l-9 9V17h5.59l9-9a1.5 1.5 0 0 0 0-2.12zM7 15H5v-2l6.88-6.88 2 2z" />
+          </svg>
+          <span class="sr-only">Edit benefit</span>
+        </button>
+        <button class="icon-button danger" type="button" @click="emit('delete')" title="Remove benefit">
+          <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path d="M7 3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1h3.5a.5.5 0 0 1 0 1h-.8l-.62 11a2 2 0 0 1-2 1.9H6.92a2 2 0 0 1-2-1.9L4.3 5H3.5a.5.5 0 0 1 0-1H7zm1 1h4V3H8zM6.3 5l.6 10.8a1 1 0 0 0 1 1h4.2a1 1 0 0 0 1-1L13.7 5z" />
+          </svg>
+          <span class="sr-only">Remove benefit</span>
+        </button>
       </div>
     </header>
 
@@ -257,13 +278,53 @@ const recurringPotentialCopy = computed(() => {
 <style scoped>
 .benefit-icons {
   display: flex;
-  gap: 0.35rem;
+  gap: 0.3rem;
+  align-items: flex-start;
+}
+
+.benefit-icons .icon-button {
+  width: 1.6rem;
+  height: 1.6rem;
+}
+
+.benefit-icons .icon-button svg {
+  width: 0.9rem;
+  height: 0.9rem;
 }
 
 .benefit-actions {
   display: flex;
   gap: 0.5rem;
   align-items: center;
+}
+
+.benefit-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.benefit-header__primary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  flex: 1;
+}
+
+.benefit-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.benefit-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  color: #475569;
 }
 
 .benefit-expiration {
@@ -273,15 +334,17 @@ const recurringPotentialCopy = computed(() => {
 }
 
 .benefit-type {
-  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
   color: #0ea5e9;
   font-weight: 600;
+  font-size: 0.72rem;
 }
 
-.benefit-header__meta {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
+.benefit-window {
+  font-size: 0.72rem;
+  color: #64748b;
+  font-weight: 500;
 }
 
 .benefit-progress {

@@ -270,6 +270,7 @@ def build_card_response(session: Session, card: CreditCard) -> CreditCardWithBen
     window_totals = metrics["window_totals"]
     window_info = metrics["window_info"]
     cycle_label = metrics["cycle_label"]
+    cycle_end = metrics["cycle_end"]
 
     benefits: List[BenefitRead] = []
     for benefit in raw_benefits:
@@ -284,6 +285,7 @@ def build_card_response(session: Session, card: CreditCard) -> CreditCardWithBen
             current_window_total = cycle_total
         else:
             current_window_total = window_entry[0] if window_entry else 0.0
+        expiration = _compute_benefit_expiration(benefit, cycle_end, window_info)
         benefits.append(
             build_benefit_read(
                 benefit,
@@ -292,6 +294,7 @@ def build_card_response(session: Session, card: CreditCard) -> CreditCardWithBen
                 cycle_label,
                 current_window_total,
                 window_label,
+                expiration,
             )
         )
 
@@ -478,7 +481,31 @@ def gather_benefit_metrics(
         "window_totals": window_totals,
         "window_info": window_info,
         "cycle_label": cycle_label,
+        "cycle_start": cycle_start,
+        "cycle_end": cycle_end,
     }
+
+
+def _compute_benefit_expiration(
+    benefit: Benefit,
+    cycle_end: date,
+    window_info: Dict[BenefitFrequency, Dict[str, object]],
+) -> date | None:
+    if benefit.expiration_date:
+        return benefit.expiration_date
+    frequency = benefit.frequency
+    if frequency == BenefitFrequency.yearly:
+        return cycle_end - timedelta(days=1)
+    if frequency in (
+        BenefitFrequency.monthly,
+        BenefitFrequency.quarterly,
+        BenefitFrequency.semiannual,
+    ):
+        info = window_info.get(frequency) or {}
+        window_end = info.get("end")
+        if isinstance(window_end, date):
+            return window_end - timedelta(days=1)
+    return None
 
 
 def build_enriched_benefit(
@@ -496,6 +523,9 @@ def build_enriched_benefit(
         current_window_total = cycle_total
     else:
         current_window_total = window_entry[0] if window_entry else 0.0
+    expiration = _compute_benefit_expiration(
+        benefit, metrics["cycle_end"], metrics["window_info"]
+    )
     return build_benefit_read(
         benefit,
         summary,
@@ -503,6 +533,7 @@ def build_enriched_benefit(
         metrics["cycle_label"],
         current_window_total,
         window_label,
+        expiration,
     )
 
 
@@ -513,6 +544,7 @@ def build_benefit_read(
     cycle_label: str,
     window_total: float | None,
     window_label: Optional[str],
+    expiration_date: date | None,
 ) -> BenefitRead:
     total, count = redemption_summary or (0.0, 0)
     cycle_value = float(cycle_total)
@@ -532,7 +564,7 @@ def build_benefit_read(
         type=benefit.type,
         value=benefit.value,
         expected_value=benefit.expected_value,
-        expiration_date=benefit.expiration_date,
+        expiration_date=expiration_date,
         is_used=benefit.is_used,
         used_at=benefit.used_at,
         redemption_total=total,

@@ -12,6 +12,13 @@
       "value": 90
     },
     {
+      "name": "Upgraded boarding credits",
+      "description": "Four upgraded boardings per year (when available) to secure an A1-A15 position.",
+      "frequency": "yearly",
+      "type": "incremental",
+      "value": 160
+    },
+    {
       "name": "Travel credits",
       "description": "Annual statement credits for Wi-Fi and in-flight purchases.",
       "frequency": "yearly",

@@ -13,17 +13,37 @@
     },
     {
       "name": "DoorDash credits",
-      "description": "$5 monthly DoorDash credits (DoorDash and Caviar orders).",
+      "description": "$5 monthly statement credits toward DoorDash and Caviar orders when you activate DashPass.",
       "frequency": "monthly",
       "type": "incremental",
       "value": 60
     },
     {
+      "name": "DoorDash DashPass membership",
+      "description": "Complimentary DashPass membership for primary and authorized users (currently through 12/31/2024).",
+      "frequency": "yearly",
+      "type": "standard",
+      "value": 96
+    },
+    {
+      "name": "Instacart+ membership & credits",
+      "description": "Instacart+ membership with up to $15 in monthly statement credits (currently through 7/31/2024).",
+      "frequency": "monthly",
+      "type": "incremental",
+      "value": 180
+    },
+    {
       "name": "Lyft Pink membership",
-      "description": "Annual valuation of the included Lyft Pink All Access membership.",
+      "description": "Complimentary Lyft Pink All Access membership (through 12/31/2024) valued annually.",
       "frequency": "yearly",
       "type": "standard",
       "value": 199
+    },
+    {
+      "name": "Lounge visits",
+      "description": "Track the value of Priority Pass™, Sapphire Lounge, and Chase Dining lounge access.",
+      "frequency": "yearly",
+      "type": "cumulative"
     },
     {
       "name": "Chase Offers",

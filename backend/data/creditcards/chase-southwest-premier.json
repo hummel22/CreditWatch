@@ -12,6 +12,13 @@
       "value": 90
     },
     {
+      "name": "EarlyBird Check-In credits",
+      "description": "Two EarlyBird Check-In credits each year to snag automatic check-in.",
+      "frequency": "yearly",
+      "type": "incremental",
+      "value": 60
+    },
+    {
       "name": "In-flight Wi-Fi credits",
       "description": "Track statement credits for Southwest Wi-Fi purchases.",
       "frequency": "yearly",

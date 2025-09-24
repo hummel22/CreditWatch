@@ -30,10 +30,12 @@ const statusTag = computed(() => {
       : { label: 'Available', tone: 'warning' }
   }
   if (type === 'incremental') {
-    if (props.benefit.redemption_total >= props.benefit.value) {
+    const used = props.benefit.cycle_redemption_total || 0
+    const target = Number(props.benefit.value ?? 0)
+    if (used >= target && target > 0) {
       return { label: 'Completed', tone: 'success' }
     }
-    if (props.benefit.redemption_total > 0) {
+    if (used > 0) {
       return { label: 'In progress', tone: 'info' }
     }
     return { label: 'Not started', tone: 'warning' }
@@ -54,13 +56,13 @@ const expirationLabel = computed(() => {
 
 const redemptionSummary = computed(() => {
   if (props.benefit.type === 'incremental') {
-    const used = props.benefit.redemption_total || 0
+    const used = props.benefit.cycle_redemption_total || 0
     const target = Number(props.benefit.value ?? 0)
     const remaining = props.benefit.remaining_value ?? Math.max(target - used, 0)
-    return `Used $${used.toFixed(2)} of $${target.toFixed(2)} (${remaining <= 0 ? 'complete' : `$${remaining.toFixed(2)} remaining`})`
+    return `Used $${used.toFixed(2)} of $${target.toFixed(2)} this cycle (${remaining <= 0 ? 'complete' : `$${remaining.toFixed(2)} remaining`})`
   }
   if (props.benefit.type === 'cumulative') {
-    const used = props.benefit.redemption_total || 0
+    const used = props.benefit.cycle_redemption_total || 0
     if (props.benefit.expected_value != null) {
       return `Recorded $${used.toFixed(2)} this cycle · Expected $${props.benefit.expected_value.toFixed(2)}`
     }
@@ -94,7 +96,7 @@ const frequencyLabels = {
 const annualPotential = computed(() => {
   const occurrences = occurrencesPerYear[props.benefit.frequency] || 1
   if (props.benefit.type === 'cumulative') {
-    return props.benefit.expected_value ?? props.benefit.redemption_total ?? 0
+    return props.benefit.expected_value ?? props.benefit.cycle_redemption_total ?? 0
   }
   const perPeriod = Number(props.benefit.value ?? 0)
   return perPeriod * occurrences
@@ -111,12 +113,27 @@ const periodPotential = computed(() => {
   return Number(props.benefit.value ?? 0)
 })
 
-const recurringCopy = computed(() => {
+const recurringActualCopy = computed(() => {
+  if (!isRecurringBenefit.value) {
+    return ''
+  }
+  const windowLabel = props.benefit.current_window_label || `Current ${frequencyLabels[props.benefit.frequency] || 'period'}`
+  const windowAmount = Number(props.benefit.current_window_total ?? 0)
+  const cycleAmount = Number(props.benefit.cycle_redemption_total ?? 0)
+  const cycleLabel = props.benefit.cycle_label
+    ? props.benefit.cycle_label.includes('-')
+      ? `Cycle ${props.benefit.cycle_label}`
+      : `Year ${props.benefit.cycle_label}`
+    : 'Cycle total'
+  return `${windowLabel}: $${windowAmount.toFixed(2)} logged • ${cycleLabel}: $${cycleAmount.toFixed(2)}`
+})
+
+const recurringPotentialCopy = computed(() => {
   if (!isRecurringBenefit.value || !annualPotential.value) {
     return ''
   }
   const label = frequencyLabels[props.benefit.frequency] || 'period'
-  return `Annual value $${annualPotential.value.toFixed(2)} • Per ${label} $${periodPotential.value.toFixed(2)}`
+  return `Potential annual $${annualPotential.value.toFixed(2)} • Per ${label} $${periodPotential.value.toFixed(2)}`
 })
 </script>
 
@@ -170,7 +187,8 @@ const recurringCopy = computed(() => {
       <p v-if="benefit.description">{{ benefit.description }}</p>
       <p class="benefit-expiration">Expires: {{ expirationLabel }}</p>
       <p class="benefit-progress">{{ redemptionSummary }}</p>
-      <p v-if="recurringCopy" class="benefit-recurring">{{ recurringCopy }}</p>
+      <p v-if="recurringActualCopy" class="benefit-recurring">{{ recurringActualCopy }}</p>
+      <p v-if="recurringPotentialCopy" class="benefit-recurring potential">{{ recurringPotentialCopy }}</p>
     </section>
 
     <footer class="benefit-footer">
@@ -183,11 +201,20 @@ const recurringCopy = computed(() => {
             Expected ${{ Number(benefit.expected_value).toFixed(2) }}
           </template>
           <template v-else>
-            ${{ benefit.redemption_total.toFixed(2) }} tracked
+            ${{ benefit.cycle_redemption_total.toFixed(2) }} tracked
           </template>
         </strong>
       </div>
       <div class="benefit-actions">
+        <button
+          v-if="benefit.type === 'standard'"
+          class="primary-button"
+          type="button"
+          @click="emit('add-redemption', benefit)"
+          title="Redeem benefit"
+        >
+          Redeem
+        </button>
         <button
           v-if="benefit.type === 'standard'"
           class="primary-button secondary"
@@ -267,6 +294,10 @@ const recurringCopy = computed(() => {
   font-size: 0.78rem;
   margin: 0.1rem 0 0;
   color: #6366f1;
+}
+
+.benefit-recurring.potential {
+  color: #94a3b8;
 }
 
 strong {

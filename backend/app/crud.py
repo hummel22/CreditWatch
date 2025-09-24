@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from sqlalchemy import func
@@ -166,7 +166,10 @@ def list_benefit_redemptions(session: Session, benefit_id: int) -> List[BenefitR
 
 
 def redemption_summary_for_benefits(
-    session: Session, benefit_ids: Sequence[int]
+    session: Session,
+    benefit_ids: Sequence[int],
+    start_date: date | None = None,
+    end_date: date | None = None,
 ) -> Dict[int, Tuple[float, int]]:
     if not benefit_ids:
         return {}
@@ -179,6 +182,10 @@ def redemption_summary_for_benefits(
         .where(BenefitRedemption.benefit_id.in_(benefit_ids))
         .group_by(BenefitRedemption.benefit_id)
     )
+    if start_date is not None:
+        statement = statement.where(BenefitRedemption.occurred_on >= start_date)
+    if end_date is not None:
+        statement = statement.where(BenefitRedemption.occurred_on < end_date)
     results = session.exec(statement).all()
     return {benefit_id: (float(total), int(count)) for benefit_id, total, count in results}
 

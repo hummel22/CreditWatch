@@ -57,6 +57,10 @@ class BenefitRead(BenefitBase):
     redemption_total: float = Field(default=0, ge=0)
     redemption_count: int = Field(default=0, ge=0)
     remaining_value: Optional[float] = Field(default=None, ge=0)
+    cycle_redemption_total: float = Field(default=0, ge=0)
+    cycle_label: Optional[str] = None
+    current_window_total: Optional[float] = Field(default=None, ge=0)
+    current_window_label: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

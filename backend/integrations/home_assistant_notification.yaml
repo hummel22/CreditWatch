@@ -2,6 +2,7 @@
 #
 # Import this file into Home Assistant (Settings → Automations & Scenes → Import blueprint)
 # to create an automation that listens for webhook calls from the CreditWatch backend.
+# Set the ``Webhook ID`` blueprint input to the identifier configured in the backend.
 # Update the ``default_target`` dictionary with the notification services that correspond
 # to your devices. The backend will send a ``target`` slug that maps to one of these keys.
 #
@@ -13,14 +14,20 @@ blueprint:
   description: Handle CreditWatch reminder notifications via a webhook
   domain: automation
   source_url: https://example.com/creditwatch/home-assistant-webhook
-  input: {}
+  input:
+    webhook_id:
+      name: Webhook ID
+      description: Unique identifier configured in the CreditWatch backend.
+      selector:
+        text:
+      default: creditwatch
 
 trigger:
   - platform: webhook
     allowed_methods:
       - POST
     local_only: false
-    webhook_id: !secret creditwatch_webhook_id
+    webhook_id: !input webhook_id
 
 variables:
   payload: "{{ trigger.json | default({}) }}"

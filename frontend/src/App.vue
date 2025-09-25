@@ -46,6 +46,41 @@ const notificationSettingsLoaded = ref(false)
 const notificationSettingsError = ref('')
 const notificationSettingsSuccess = ref('')
 
+const backupSettings = reactive({
+  id: null,
+  server: '',
+  share: '',
+  directory: '',
+  username: '',
+  password: '',
+  domain: ''
+})
+
+const backupSettingsMeta = reactive({
+  has_password: false,
+  last_backup_at: null,
+  last_backup_filename: '',
+  last_backup_error: '',
+  next_backup_at: null,
+  created_at: null,
+  updated_at: null
+})
+
+const backupSettingsLoading = ref(false)
+const backupSettingsSaving = ref(false)
+const backupSettingsError = ref('')
+const backupSettingsSuccess = ref('')
+
+const backupImport = reactive({
+  file: null,
+  filename: '',
+  loading: false,
+  error: '',
+  success: ''
+})
+
+const backupImportInputKey = ref(0)
+
 const notificationTests = reactive({
   custom: {
     title: '',
@@ -115,6 +150,21 @@ watch(
   }
 )
 
+watch(
+  () => [
+    backupSettings.server,
+    backupSettings.share,
+    backupSettings.directory,
+    backupSettings.username,
+    backupSettings.domain,
+    backupSettings.password
+  ],
+  () => {
+    backupSettingsError.value = ''
+    backupSettingsSuccess.value = ''
+  }
+)
+
 function resetNotificationSettingsState() {
   notificationSettings.id = null
   notificationSettings.base_url = ''
@@ -142,6 +192,49 @@ function applyNotificationSettings(data) {
 function clearNotificationSettingsMessages() {
   notificationSettingsError.value = ''
   notificationSettingsSuccess.value = ''
+}
+
+function resetBackupSettingsState() {
+  backupSettings.id = null
+  backupSettings.server = ''
+  backupSettings.share = ''
+  backupSettings.directory = ''
+  backupSettings.username = ''
+  backupSettings.password = ''
+  backupSettings.domain = ''
+  backupSettingsMeta.has_password = false
+  backupSettingsMeta.last_backup_at = null
+  backupSettingsMeta.last_backup_filename = ''
+  backupSettingsMeta.last_backup_error = ''
+  backupSettingsMeta.next_backup_at = null
+  backupSettingsMeta.created_at = null
+  backupSettingsMeta.updated_at = null
+}
+
+function applyBackupSettings(data) {
+  if (!data || typeof data !== 'object') {
+    resetBackupSettingsState()
+    return
+  }
+  backupSettings.id = data.id ?? null
+  backupSettings.server = data.server ?? ''
+  backupSettings.share = data.share ?? ''
+  backupSettings.directory = data.directory ?? ''
+  backupSettings.username = data.username ?? ''
+  backupSettings.password = ''
+  backupSettings.domain = data.domain ?? ''
+  backupSettingsMeta.has_password = Boolean(data.has_password)
+  backupSettingsMeta.last_backup_at = data.last_backup_at ?? null
+  backupSettingsMeta.last_backup_filename = data.last_backup_filename ?? ''
+  backupSettingsMeta.last_backup_error = data.last_backup_error ?? ''
+  backupSettingsMeta.next_backup_at = data.next_backup_at ?? null
+  backupSettingsMeta.created_at = data.created_at ?? null
+  backupSettingsMeta.updated_at = data.updated_at ?? null
+}
+
+function clearBackupSettingsMessages() {
+  backupSettingsError.value = ''
+  backupSettingsSuccess.value = ''
 }
 
 function extractErrorMessage(err, fallback) {
@@ -187,6 +280,26 @@ async function loadNotificationSettings() {
   }
 }
 
+async function loadBackupSettings() {
+  backupSettingsLoading.value = true
+  backupSettingsSuccess.value = ''
+  backupSettingsError.value = ''
+  try {
+    const response = await apiClient.get('/api/admin/backup/settings')
+    if (response.data) {
+      applyBackupSettings(response.data)
+    } else {
+      resetBackupSettingsState()
+    }
+  } catch (err) {
+    resetBackupSettingsState()
+    backupSettingsError.value =
+      'Unable to load backup settings. Enter new details to configure backups.'
+  } finally {
+    backupSettingsLoading.value = false
+  }
+}
+
 async function saveNotificationSettings() {
   clearNotificationSettingsMessages()
   const baseUrl = notificationSettings.base_url.trim()
@@ -215,6 +328,92 @@ async function saveNotificationSettings() {
     )
   } finally {
     notificationSettingsSaving.value = false
+  }
+}
+
+async function saveBackupSettings() {
+  clearBackupSettingsMessages()
+  const server = backupSettings.server.trim()
+  const share = backupSettings.share.trim()
+  const directory = backupSettings.directory.trim()
+  const username = backupSettings.username.trim()
+  const domain = backupSettings.domain.trim()
+  const password = backupSettings.password.trim()
+  const hasExisting = backupSettings.id !== null
+  if (!server || !share || !username) {
+    backupSettingsError.value = 'Provide the SMB server, share, and username before saving.'
+    return
+  }
+  if (!password && !hasExisting && !backupSettingsMeta.has_password) {
+    backupSettingsError.value = 'Enter the SMB password to configure backups.'
+    return
+  }
+  const payload = {
+    server,
+    share,
+    username,
+    directory: directory ? directory : ''
+  }
+  if (domain) {
+    payload.domain = domain
+  }
+  if (password) {
+    payload.password = password
+  }
+  backupSettingsSaving.value = true
+  try {
+    const response = hasExisting
+      ? await apiClient.patch('/api/admin/backup/settings', payload)
+      : await apiClient.put('/api/admin/backup/settings', payload)
+    applyBackupSettings(response.data)
+    backupSettingsSuccess.value = hasExisting
+      ? 'Backup settings updated. A new backup will run within the next hour.'
+      : 'Backup settings saved. Backups will start within the next hour.'
+  } catch (err) {
+    backupSettingsError.value = extractErrorMessage(err, 'Unable to save backup settings.')
+  } finally {
+    backupSettingsSaving.value = false
+  }
+}
+
+function handleBackupFileChange(event) {
+  const files = event?.target?.files
+  const [file] = files && files.length ? files : [null]
+  backupImport.file = file
+  backupImport.filename = file ? file.name : ''
+  backupImport.error = ''
+  backupImport.success = ''
+}
+
+async function submitBackupImport() {
+  backupImport.error = ''
+  backupImport.success = ''
+  if (!backupImport.file) {
+    backupImport.error = 'Select a .db file to import.'
+    return
+  }
+  if (!/\.db$/i.test(backupImport.file.name || '')) {
+    backupImport.error = 'Only .db files can be imported.'
+    return
+  }
+  const formData = new FormData()
+  formData.append('file', backupImport.file)
+  backupImport.loading = true
+  try {
+    await apiClient.post('/api/admin/backup/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    backupImport.success = 'Database imported successfully. Refreshing data…'
+    backupImport.file = null
+    backupImport.filename = ''
+    backupImportInputKey.value += 1
+    await loadNotificationSettings()
+    await loadCards()
+    await loadBackupSettings()
+  } catch (err) {
+    backupImport.error = extractErrorMessage(err, 'Unable to import the database file.')
+  } finally {
+    backupImport.loading = false
   }
 }
 
@@ -1468,6 +1667,7 @@ function closeHistoryModal() {
 
 onMounted(async () => {
   await loadNotificationSettings()
+  await loadBackupSettings()
   await loadFrequencies()
   await loadPreconfiguredCards()
   await loadCards()
@@ -1807,6 +2007,145 @@ onMounted(async () => {
               </div>
             </form>
           </div>
+        </section>
+
+        <section class="section-card admin-board content-constrained">
+          <div class="section-header">
+            <div>
+              <h2 class="section-title">Backups</h2>
+              <p class="section-description">
+                Configure automatic SMB backups and restore the database from saved exports.
+              </p>
+            </div>
+          </div>
+          <div v-if="backupSettingsLoading" class="empty-state">
+            Loading backup configuration...
+          </div>
+          <template v-else>
+            <div class="backup-grid">
+              <form class="backup-settings-form" @submit.prevent="saveBackupSettings">
+                <div class="field-group">
+                  <input
+                    v-model="backupSettings.server"
+                    type="text"
+                    placeholder="SMB server (e.g., 192.168.1.10)"
+                    required
+                  />
+                  <input
+                    v-model="backupSettings.share"
+                    type="text"
+                    placeholder="Share name (e.g., backups)"
+                    required
+                  />
+                </div>
+                <div class="field-group">
+                  <input
+                    v-model="backupSettings.directory"
+                    type="text"
+                    placeholder="Folder within the share (optional)"
+                  />
+                  <input v-model="backupSettings.username" type="text" placeholder="Username" required />
+                </div>
+                <div class="field-group">
+                  <input
+                    v-model="backupSettings.domain"
+                    type="text"
+                    placeholder="Domain or workgroup (optional)"
+                  />
+                  <input
+                    v-model="backupSettings.password"
+                    type="password"
+                    placeholder="Password"
+                    :required="!backupSettingsMeta.has_password"
+                  />
+                </div>
+                <p
+                  v-if="backupSettingsMeta.has_password && !backupSettings.password"
+                  class="helper-text subtle-text"
+                >
+                  A password is already stored on the server. Enter a new password to replace it.
+                </p>
+                <div class="backup-messages">
+                  <p v-if="backupSettingsError" class="helper-text error-text">
+                    {{ backupSettingsError }}
+                  </p>
+                  <p v-else-if="backupSettingsSuccess" class="helper-text success-text">
+                    {{ backupSettingsSuccess }}
+                  </p>
+                </div>
+                <div class="backup-actions">
+                  <button class="primary-button" type="submit" :disabled="backupSettingsSaving">
+                    {{ backupSettingsSaving ? 'Saving…' : 'Save settings' }}
+                  </button>
+                </div>
+              </form>
+              <div class="backup-status-card">
+                <div class="backup-status-details">
+                  <dl class="backup-status-list">
+                    <div class="backup-status-entry">
+                      <dt>Last backup</dt>
+                      <dd>
+                        {{
+                          backupSettingsMeta.last_backup_at
+                            ? formatNotificationTimestamp(backupSettingsMeta.last_backup_at)
+                            : 'No backups yet'
+                        }}
+                      </dd>
+                    </div>
+                    <div class="backup-status-entry">
+                      <dt>Last file</dt>
+                      <dd>
+                        <span v-if="backupSettingsMeta.last_backup_filename">
+                          {{ backupSettingsMeta.last_backup_filename }}
+                        </span>
+                        <span v-else>–</span>
+                      </dd>
+                    </div>
+                    <div class="backup-status-entry">
+                      <dt>Next scheduled</dt>
+                      <dd>
+                        <span v-if="backupSettingsMeta.next_backup_at">
+                          {{ formatNotificationTimestamp(backupSettingsMeta.next_backup_at) }}
+                        </span>
+                        <span v-else>Waiting for the next change</span>
+                      </dd>
+                    </div>
+                  </dl>
+                  <p v-if="backupSettingsMeta.last_backup_error" class="helper-text error-text">
+                    Last backup failed: {{ backupSettingsMeta.last_backup_error }}
+                  </p>
+                </div>
+                <form class="backup-import-form" @submit.prevent="submitBackupImport">
+                  <h3 class="backup-import-title">Import a backup</h3>
+                  <p class="helper-text subtle-text">
+                    Replace the current database with a saved <code>.db</code> file.
+                  </p>
+                  <input
+                    :key="backupImportInputKey"
+                    type="file"
+                    accept=".db"
+                    @change="handleBackupFileChange"
+                  />
+                  <p v-if="backupImport.filename" class="helper-text subtle-text">
+                    Selected file: {{ backupImport.filename }}
+                  </p>
+                  <div class="backup-messages">
+                    <p v-if="backupImport.error" class="helper-text error-text">
+                      {{ backupImport.error }}
+                    </p>
+                    <p v-else-if="backupImport.success" class="helper-text success-text">
+                      {{ backupImport.success }}
+                    </p>
+                  </div>
+                  <div class="backup-import-actions">
+                    <button class="primary-button secondary" type="submit" :disabled="backupImport.loading">
+                      {{ backupImport.loading ? 'Importing…' : 'Import database' }}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </template>
         </section>
 
         <section class="section-card admin-board content-constrained">

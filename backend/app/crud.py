@@ -12,6 +12,7 @@ from .models import (
     BenefitRedemption,
     BenefitType,
     CreditCard,
+    BackupSettings,
     NotificationSettings,
 )
 from .schemas import (
@@ -22,6 +23,8 @@ from .schemas import (
     BenefitUsageUpdate,
     CreditCardCreate,
     CreditCardUpdate,
+    BackupSettingsUpdate,
+    BackupSettingsWrite,
     NotificationSettingsUpdate,
     NotificationSettingsWrite,
 )
@@ -210,6 +213,56 @@ def upsert_notification_settings(
         for key, value in data.items():
             setattr(settings, key, value)
     settings.updated_at = now
+    session.add(settings)
+    session.commit()
+    session.refresh(settings)
+    return settings
+
+
+def get_backup_settings(session: Session) -> BackupSettings | None:
+    statement = select(BackupSettings).limit(1)
+    return session.exec(statement).first()
+
+
+def upsert_backup_settings(
+    session: Session, payload: BackupSettingsWrite | BackupSettingsUpdate
+) -> BackupSettings:
+    data = payload.model_dump(exclude_unset=True)
+    settings = get_backup_settings(session)
+    now = datetime.utcnow()
+    if settings is None:
+        if not isinstance(payload, BackupSettingsWrite):
+            raise ValueError("Backup settings have not been configured yet.")
+        settings = BackupSettings(**data, created_at=now, updated_at=now)
+        session.add(settings)
+    else:
+        for key, value in data.items():
+            setattr(settings, key, value)
+        settings.updated_at = now
+        session.add(settings)
+    session.commit()
+    session.refresh(settings)
+    return settings
+
+
+def record_backup_success(
+    session: Session, settings: BackupSettings, *, timestamp: datetime, filename: str
+) -> BackupSettings:
+    settings.last_backup_at = timestamp
+    settings.last_backup_filename = filename
+    settings.last_backup_error = None
+    settings.updated_at = datetime.utcnow()
+    session.add(settings)
+    session.commit()
+    session.refresh(settings)
+    return settings
+
+
+def record_backup_failure(
+    session: Session, settings: BackupSettings, error_message: str
+) -> BackupSettings:
+    settings.last_backup_error = error_message
+    settings.updated_at = datetime.utcnow()
     session.add(settings)
     session.commit()
     session.refresh(settings)

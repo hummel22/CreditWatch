@@ -9,6 +9,7 @@ CreditWatch is a local-first dashboard for tracking credit cards, their annual f
 - ✅ Mark benefits as used to keep a running tally of realized value versus your annual fees.
 - 📊 Gorgeous, card-based Vue 3 interface with at-a-glance progress bars for each credit card.
 - 🗂️ SQLite persistence so your data lives alongside the app when run locally or inside Docker.
+- 💾 Automated SMB backups with monthly retention plus one-click restores from the admin panel.
 
 ## Project layout
 
@@ -66,8 +67,22 @@ The backend exposes a REST API under `/api`. The most important endpoints are:
 | POST   | `/api/benefits/{benefit_id}/usage`    | Mark a benefit as used or reset it.          |
 | DELETE | `/api/benefits/{benefit_id}`          | Remove a benefit from a card.                |
 | GET    | `/api/frequencies`                    | Enumerate available benefit frequencies.     |
+| GET    | `/api/admin/backup/settings`          | Retrieve the SMB backup configuration.       |
+| PUT    | `/api/admin/backup/settings`          | Create or replace SMB backup settings.       |
+| PATCH  | `/api/admin/backup/settings`          | Partially update SMB backup settings.        |
+| POST   | `/api/admin/backup/import`            | Replace the database with an uploaded file.  |
 
 FastAPI automatically exposes interactive docs at [http://localhost:8010/docs](http://localhost:8010/docs).
+
+## Database backups
+
+The **Backups** card in the admin panel manages database resilience:
+
+- Provide the SMB server, share, optional subfolder, username, and password to enable hourly backups.
+- CreditWatch waits an hour after the most recent data change before copying the SQLite database to the share. Each month is stored as a single `creditwatch-YYYY-MM.db` snapshot so older months remain available.
+- Uploading a `*.db` file restores that snapshot immediately and reinitialises the schema. This operation overwrites any unsaved changes, so keep a backup handy.
+
+These features rely on the [`smbprotocol`](https://pypi.org/project/smbprotocol/) client library, which ships with the backend requirements.
 
 ## Using the app
 

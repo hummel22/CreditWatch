@@ -212,6 +212,108 @@ class NotificationSettingsRead(NotificationSettingsBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class BackupSettingsBase(SQLModel):
+    server: str
+    share: str
+    directory: str = Field(default="")
+    username: str
+    domain: Optional[str] = None
+
+    @field_validator("server", "share", "username", mode="before")
+    @classmethod
+    def validate_required_field(cls, value: str) -> str:
+        cleaned = str(value or "").strip()
+        if not cleaned:
+            raise ValueError("This field cannot be empty.")
+        return cleaned
+
+    @field_validator("directory", mode="before")
+    @classmethod
+    def normalise_directory(cls, value: str) -> str:
+        if value is None:
+            return ""
+        cleaned = str(value).strip().strip("/\\")
+        return cleaned
+
+    @field_validator("domain", mode="before")
+    @classmethod
+    def normalise_domain(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = str(value).strip()
+        return cleaned or None
+
+
+class BackupSettingsWrite(BackupSettingsBase):
+    password: str
+
+    @field_validator("password", mode="before")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        cleaned = str(value or "").strip()
+        if not cleaned:
+            raise ValueError("Password is required.")
+        return cleaned
+
+
+class BackupSettingsUpdate(SQLModel):
+    server: Optional[str] = None
+    share: Optional[str] = None
+    directory: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    domain: Optional[str] = None
+
+    @field_validator("server", "share", "username", mode="before")
+    @classmethod
+    def trim_required_optional(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = str(value).strip()
+        if not cleaned:
+            raise ValueError("This field cannot be empty.")
+        return cleaned
+
+    @field_validator("password", mode="before")
+    @classmethod
+    def trim_password(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = str(value).strip()
+        if not cleaned:
+            raise ValueError("Password cannot be empty.")
+        return cleaned
+
+    @field_validator("directory", mode="before")
+    @classmethod
+    def trim_directory(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = str(value).strip().strip("/\\")
+        return cleaned
+
+    @field_validator("domain", mode="before")
+    @classmethod
+    def trim_domain(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = str(value).strip()
+        return cleaned if cleaned else None
+
+
+class BackupSettingsRead(BackupSettingsBase):
+    id: int
+    last_backup_at: Optional[datetime] = None
+    last_backup_filename: Optional[str] = None
+    last_backup_error: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    next_backup_at: Optional[datetime] = None
+    has_password: bool = False
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class NotificationSettingsWrite(NotificationSettingsBase):
     pass
 

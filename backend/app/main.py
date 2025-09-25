@@ -1,16 +1,22 @@
 from __future__ import annotations
 
 import calendar
+import shutil
+import sqlite3
+import tempfile
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from fastapi import Depends, FastAPI, HTTPException, Response, status
+from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session
 
 from . import crud
-from .database import engine, get_session, init_db
+from .backup import BackupService, refresh_backup_settings, schedule_backup_after_change
+from .database import DATABASE_PATH, engine, get_session, init_db
 from .models import (
+    BackupSettings,
     Benefit,
     BenefitFrequency,
     BenefitRedemption,
@@ -26,6 +32,9 @@ from .schemas import (
     BenefitRead,
     BenefitUpdate,
     BenefitUsageUpdate,
+    BackupSettingsRead,
+    BackupSettingsUpdate,
+    BackupSettingsWrite,
     CreditCardCreate,
     CreditCardUpdate,
     CreditCardWithBenefits,
@@ -63,10 +72,16 @@ async def on_startup() -> None:
     service = NotificationService(engine=engine)
     service.start()
     app.state.notification_service = service
+    backup_service = BackupService(engine=engine)
+    backup_service.start()
+    app.state.backup_service = backup_service
 
 
 @app.on_event("shutdown")
 async def on_shutdown() -> None:
+    backup_service: BackupService | None = getattr(app.state, "backup_service", None)
+    if backup_service is not None:
+        await backup_service.stop()
     service: NotificationService | None = getattr(app.state, "notification_service", None)
     if service is not None:
         await service.stop()
@@ -143,6 +158,27 @@ def get_notification_service() -> NotificationService:
     return service
 
 
+def get_backup_service(ensure_ready: bool = True) -> BackupService | None:
+    service: BackupService | None = getattr(app.state, "backup_service", None)
+    if ensure_ready and service is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Backup service is not ready.",
+        )
+    return service
+
+
+def build_backup_settings_response(
+    settings: BackupSettings, service: BackupService | None
+) -> BackupSettingsRead:
+    data = settings.model_dump()
+    data.pop("password", None)
+    data["has_password"] = bool(settings.password)
+    next_run = service.next_run if service else None
+    data["next_backup_at"] = next_run
+    return BackupSettingsRead.model_validate(data)
+
+
 @app.get(
     "/api/admin/notifications/settings",
     response_model=Optional[NotificationSettingsRead],
@@ -206,6 +242,100 @@ async def trigger_daily_notification_test(
     )
 
 
+@app.get(
+    "/api/admin/backup/settings",
+    response_model=Optional[BackupSettingsRead],
+)
+def get_backup_settings_endpoint(session: Session = Depends(get_session)) -> BackupSettingsRead | None:
+    settings = crud.get_backup_settings(session)
+    if settings is None:
+        return None
+    service = get_backup_service(ensure_ready=False)
+    return build_backup_settings_response(settings, service)
+
+
+@app.put(
+    "/api/admin/backup/settings",
+    response_model=BackupSettingsRead,
+)
+def put_backup_settings(
+    payload: BackupSettingsWrite, session: Session = Depends(get_session)
+) -> BackupSettingsRead:
+    settings = crud.upsert_backup_settings(session, payload)
+    refresh_backup_settings(app)
+    schedule_backup_after_change(app)
+    service = get_backup_service(ensure_ready=False)
+    return build_backup_settings_response(settings, service)
+
+
+@app.patch(
+    "/api/admin/backup/settings",
+    response_model=BackupSettingsRead,
+)
+def patch_backup_settings(
+    payload: BackupSettingsUpdate, session: Session = Depends(get_session)
+) -> BackupSettingsRead:
+    try:
+        settings = crud.upsert_backup_settings(session, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    refresh_backup_settings(app)
+    schedule_backup_after_change(app)
+    service = get_backup_service(ensure_ready=False)
+    return build_backup_settings_response(settings, service)
+
+
+@app.post(
+    "/api/admin/backup/import",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+async def import_database(file: UploadFile = File(...)) -> Response:
+    filename = (file.filename or "").lower()
+    if not filename.endswith(".db"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only .db files can be imported.",
+        )
+    temp_file = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    temp_path = Path(temp_file.name)
+    bytes_written = 0
+    try:
+        try:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                temp_file.write(chunk)
+                bytes_written += len(chunk)
+        finally:
+            temp_file.close()
+        if bytes_written == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Uploaded file is empty.",
+            )
+        try:
+            with sqlite3.connect(temp_path) as connection:
+                connection.execute("PRAGMA schema_version;")
+        except sqlite3.DatabaseError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Uploaded file is not a valid SQLite database.",
+            ) from exc
+        destination = DATABASE_PATH / "creditwatch.db"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(temp_path, destination)
+        engine.dispose()
+        init_db()
+    finally:
+        temp_path.unlink(missing_ok=True)
+        await file.close()
+    refresh_backup_settings(app)
+    schedule_backup_after_change(app)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @app.get("/api/cards", response_model=List[CreditCardWithBenefits])
 def list_cards(session: Session = Depends(get_session)) -> List[CreditCardWithBenefits]:
     cards = crud.list_credit_cards(session)
@@ -222,6 +352,7 @@ def create_card(
 ) -> CreditCardWithBenefits:
     card = crud.create_credit_card(session, payload)
     session.refresh(card)
+    schedule_backup_after_change(app)
     return build_card_response(session, card)
 
 
@@ -231,6 +362,7 @@ def update_card(
 ) -> CreditCardWithBenefits:
     card = require_card(session, card_id)
     updated = crud.update_credit_card(session, card, payload)
+    schedule_backup_after_change(app)
     return build_card_response(session, updated)
 
 
@@ -242,6 +374,7 @@ def update_card(
 def delete_card(card_id: int, session: Session = Depends(get_session)) -> Response:
     card = require_card(session, card_id)
     crud.delete_credit_card(session, card)
+    schedule_backup_after_change(app)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -256,6 +389,7 @@ def add_benefit(
     card = require_card(session, card_id)
     benefit = crud.create_benefit(session, card, payload)
     session.refresh(benefit)
+    schedule_backup_after_change(app)
     return build_enriched_benefit(session, benefit, card)
 
 
@@ -271,6 +405,7 @@ def update_benefit(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         ) from exc
+    schedule_backup_after_change(app)
     return build_enriched_benefit(session, updated)
 
 
@@ -285,6 +420,7 @@ def set_benefit_usage(
             detail="Usage toggles are only supported for standard benefits.",
         )
     updated = crud.set_benefit_usage(session, benefit, payload)
+    schedule_backup_after_change(app)
     return build_enriched_benefit(session, updated)
 
 
@@ -316,6 +452,7 @@ def create_benefit_redemption(
     benefit = require_benefit(session, benefit_id)
     created = crud.create_benefit_redemption(session, benefit, payload)
     session.refresh(created)
+    schedule_backup_after_change(app)
     return BenefitRedemptionRead.model_validate(created, from_attributes=True)
 
 
@@ -330,6 +467,7 @@ def update_benefit_redemption(
 ) -> BenefitRedemptionRead:
     redemption = require_redemption(session, redemption_id)
     updated = crud.update_benefit_redemption(session, redemption, payload)
+    schedule_backup_after_change(app)
     return BenefitRedemptionRead.model_validate(updated, from_attributes=True)
 
 
@@ -343,6 +481,7 @@ def delete_benefit_redemption(
 ) -> Response:
     redemption = require_redemption(session, redemption_id)
     crud.delete_benefit_redemption(session, redemption)
+    schedule_backup_after_change(app)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -355,6 +494,7 @@ def delete_benefit(benefit_id: int, session: Session = Depends(get_session)) -> 
     benefit = require_benefit(session, benefit_id)
     session.delete(benefit)
     session.commit()
+    schedule_backup_after_change(app)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

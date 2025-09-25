@@ -174,7 +174,13 @@ def update_benefit(
     benefit_id: int, payload: BenefitUpdate, session: Session = Depends(get_session)
 ) -> BenefitRead:
     benefit = require_benefit(session, benefit_id)
-    updated = crud.update_benefit(session, benefit, payload)
+    try:
+        updated = crud.update_benefit(session, benefit, payload)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
     return build_enriched_benefit(session, updated)
 
 
@@ -281,11 +287,15 @@ def build_card_response(session: Session, card: CreditCard) -> CreditCardWithBen
         window_label = info.get("label") or cycle_label
         frequency_totals = window_totals.get(frequency, {})
         window_entry = frequency_totals.get(benefit.id)
+        window_index = info.get("index") if isinstance(info.get("index"), int) else None
+        window_count = info.get("count") if isinstance(info.get("count"), int) else None
         if frequency == BenefitFrequency.yearly:
             current_window_total = cycle_total
         else:
             current_window_total = window_entry[0] if window_entry else 0.0
         expiration = _compute_benefit_expiration(benefit, cycle_end, window_info)
+        current_window_value = _resolve_current_window_value(benefit, window_index)
+        cycle_target_value = _calculate_cycle_target_value(benefit, window_count)
         benefits.append(
             build_benefit_read(
                 benefit,
@@ -295,6 +305,10 @@ def build_card_response(session: Session, card: CreditCard) -> CreditCardWithBen
                 current_window_total,
                 window_label,
                 expiration,
+                current_window_value,
+                window_index,
+                window_count,
+                cycle_target_value,
             )
         )
 
@@ -433,7 +447,7 @@ def _current_frequency_window(
     reference: date | None = None,
     *,
     is_calendar_year: bool = False,
-) -> Tuple[date, date, str, int]:
+) -> Tuple[date, date, str, int, int]:
     reference_date = reference or date.today()
     months_map = {
         BenefitFrequency.monthly: 1,
@@ -444,7 +458,7 @@ def _current_frequency_window(
     months = months_map.get(frequency)
     if not months:
         label = _format_range_label(cycle_start, cycle_end)
-        return cycle_start, cycle_end, label, 1
+        return cycle_start, cycle_end, label, 1, 1
     windows: List[Tuple[date, date, str, int]] = []
     index = 1
     cursor = cycle_start
@@ -462,11 +476,12 @@ def _current_frequency_window(
         label = _format_frequency_label(
             frequency, 1, cycle_start, cycle_end, is_calendar_year
         )
-        return cycle_start, cycle_end, label, 1
+        return cycle_start, cycle_end, label, 1, 1
     for window_start, window_end, label, idx in windows:
         if window_start <= reference_date < window_end:
-            return window_start, window_end, label, idx
-    return windows[-1]
+            return window_start, window_end, label, idx, len(windows)
+    last_start, last_end, last_label, last_idx = windows[-1]
+    return last_start, last_end, last_label, last_idx, len(windows)
 
 
 def gather_benefit_metrics(
@@ -486,7 +501,7 @@ def gather_benefit_metrics(
     window_info: Dict[BenefitFrequency, Dict[str, object]] = {}
     is_calendar_year = card.year_tracking_mode == YearTrackingMode.calendar
     for frequency in BenefitFrequency:
-        window_start, window_end, label, _ = _current_frequency_window(
+        window_start, window_end, label, index, total_windows = _current_frequency_window(
             cycle_start,
             cycle_end,
             frequency,
@@ -496,6 +511,8 @@ def gather_benefit_metrics(
             "start": window_start,
             "end": window_end,
             "label": label,
+            "index": index,
+            "count": total_windows,
         }
         ids = frequency_groups.get(frequency, [])
         if ids and window_start < window_end:
@@ -537,6 +554,47 @@ def _compute_benefit_expiration(
     return None
 
 
+def _resolve_current_window_value(
+    benefit: Benefit, window_index: Optional[int]
+) -> Optional[float]:
+    if benefit.type == BenefitType.cumulative:
+        return None
+    if window_index is not None and benefit.window_values:
+        idx = window_index - 1
+        if 0 <= idx < len(benefit.window_values):
+            return float(benefit.window_values[idx])
+    if benefit.value is None:
+        return None
+    return float(benefit.value)
+
+
+def _calculate_cycle_target_value(
+    benefit: Benefit | BenefitRead, window_count: Optional[int]
+) -> Optional[float]:
+    if benefit.type == BenefitType.cumulative:
+        expected = getattr(benefit, "expected_value", None)
+        if expected is None:
+            return None
+        return float(expected)
+
+    base_value = getattr(benefit, "value", None)
+    windows = getattr(benefit, "window_values", None) or []
+    if not window_count or window_count <= 0:
+        return float(base_value) if base_value is not None else None
+
+    total = 0.0
+    for idx in range(window_count):
+        if idx < len(windows):
+            total += float(windows[idx] or 0)
+        elif base_value is not None:
+            total += float(base_value)
+    if total == 0.0 and base_value is None and not windows:
+        return None
+    if total == 0.0 and base_value is not None and not windows:
+        return float(base_value) * window_count
+    return total
+
+
 def build_enriched_benefit(
     session: Session, benefit: Benefit, card: CreditCard | None = None
 ) -> BenefitRead:
@@ -548,6 +606,8 @@ def build_enriched_benefit(
     info = metrics["window_info"].get(frequency, {})
     window_label = info.get("label") or metrics["cycle_label"]
     window_entry = metrics["window_totals"].get(frequency, {}).get(benefit.id)
+    window_index = info.get("index") if isinstance(info.get("index"), int) else None
+    window_count = info.get("count") if isinstance(info.get("count"), int) else None
     if frequency == BenefitFrequency.yearly:
         current_window_total = cycle_total
     else:
@@ -555,6 +615,8 @@ def build_enriched_benefit(
     expiration = _compute_benefit_expiration(
         benefit, metrics["cycle_end"], metrics["window_info"]
     )
+    current_window_value = _resolve_current_window_value(benefit, window_index)
+    cycle_target_value = _calculate_cycle_target_value(benefit, window_count)
     return build_benefit_read(
         benefit,
         summary,
@@ -563,6 +625,10 @@ def build_enriched_benefit(
         current_window_total,
         window_label,
         expiration,
+        current_window_value,
+        window_index,
+        window_count,
+        cycle_target_value,
     )
 
 
@@ -574,16 +640,25 @@ def build_benefit_read(
     window_total: float | None,
     window_label: Optional[str],
     expiration_date: date | None,
+    current_window_value: Optional[float],
+    window_index: Optional[int],
+    window_count: Optional[int],
+    cycle_target_value: Optional[float],
 ) -> BenefitRead:
     total, count = redemption_summary or (0.0, 0)
     cycle_value = float(cycle_total)
     window_value = float(window_total) if window_total is not None else None
     remaining: Optional[float]
     if benefit.type == BenefitType.incremental:
-        target = float(benefit.value or 0)
+        target = float(cycle_target_value or 0)
         remaining = max(target - cycle_value, 0)
     else:
         remaining = None
+    cycle_target = (
+        float(cycle_target_value)
+        if cycle_target_value is not None
+        else (float(benefit.expected_value) if benefit.expected_value is not None else None)
+    )
     return BenefitRead(
         id=benefit.id,
         credit_card_id=benefit.credit_card_id,
@@ -593,6 +668,7 @@ def build_benefit_read(
         type=benefit.type,
         value=benefit.value,
         expected_value=benefit.expected_value,
+        window_values=list(benefit.window_values or []),
         expiration_date=expiration_date,
         is_used=benefit.is_used,
         used_at=benefit.used_at,
@@ -603,18 +679,31 @@ def build_benefit_read(
         cycle_label=cycle_label,
         current_window_total=window_value,
         current_window_label=window_label,
+        current_window_value=current_window_value,
+        current_window_index=window_index,
+        cycle_window_count=window_count,
+        cycle_target_value=cycle_target,
     )
 
 
 def compute_benefit_totals(benefit: BenefitRead) -> Tuple[float, float]:
     cycle_total = float(benefit.cycle_redemption_total or 0)
+    target_value = (
+        float(benefit.cycle_target_value)
+        if benefit.cycle_target_value is not None
+        else None
+    )
     if benefit.type == BenefitType.standard:
-        potential = float(benefit.value or 0)
+        potential = target_value if target_value is not None else float(benefit.value or 0)
         utilized = potential if benefit.is_used else 0.0
     elif benefit.type == BenefitType.incremental:
-        potential = float(benefit.value or 0)
+        potential = target_value if target_value is not None else float(benefit.value or 0)
         utilized = min(cycle_total, potential)
     else:
-        potential = float(benefit.expected_value or cycle_total)
-        utilized = min(cycle_total, potential) if benefit.expected_value else cycle_total
+        if benefit.expected_value is not None:
+            potential = float(benefit.expected_value)
+            utilized = min(cycle_total, potential)
+        else:
+            potential = cycle_total
+            utilized = cycle_total
     return potential, utilized

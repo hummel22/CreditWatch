@@ -43,6 +43,11 @@ const autoExpiration = ref(true)
 
 const defaultFrequency = computed(() => props.frequencies[0] || 'monthly')
 const benefitTypes = ['standard', 'incremental', 'cumulative']
+const WINDOW_COUNTS = {
+  monthly: 12,
+  quarterly: 4,
+  semiannual: 2
+}
 const defaultYearAlignment = computed(() =>
   props.card.year_tracking_mode === 'anniversary' ? 'anniversary' : 'calendar'
 )
@@ -57,7 +62,9 @@ const form = reactive({
   value: '',
   expected_value: '',
   expiration_date: '',
-  yearlyAlignment: defaultYearAlignment.value
+  yearlyAlignment: defaultYearAlignment.value,
+  useCustomValues: false,
+  window_values: []
 })
 
 const typeDescriptions = {
@@ -69,6 +76,51 @@ const typeDescriptions = {
 const currentTypeDescription = computed(() => typeDescriptions[form.type])
 
 const currentCycle = computed(() => computeCardCycle(props.card))
+
+const canUseCustomWindowValues = computed(
+  () => form.type !== 'cumulative' && Object.prototype.hasOwnProperty.call(WINDOW_COUNTS, form.frequency)
+)
+
+const windowOptions = computed(() => {
+  if (!canUseCustomWindowValues.value) {
+    return []
+  }
+  const cycle = currentCycle.value
+  if (!cycle) {
+    return []
+  }
+  const windows = computeFrequencyWindows(cycle, form.frequency)
+  return windows.map((window, index) => ({
+    index: typeof window.index === 'number' ? window.index : index + 1,
+    label: window.label
+  }))
+})
+
+const windowValueDescriptor = computed(() => {
+  if (form.frequency === 'monthly') {
+    return 'month'
+  }
+  if (form.frequency === 'quarterly') {
+    return 'quarter'
+  }
+  if (form.frequency === 'semiannual') {
+    return 'half-year'
+  }
+  return 'window'
+})
+
+const valuePlaceholder = computed(() => {
+  if (form.type === 'cumulative') {
+    return 'Expected value (optional)'
+  }
+  if (canUseCustomWindowValues.value) {
+    return `Value per ${windowValueDescriptor.value}`
+  }
+  if (form.frequency === 'yearly') {
+    return 'Value per year'
+  }
+  return 'Value'
+})
 
 const cycleSubtitle = computed(() =>
   currentCycle.value.mode === 'anniversary' ? 'AF year' : 'Calendar year'
@@ -107,8 +159,13 @@ watch(
   (type) => {
     if (type === 'cumulative') {
       form.value = ''
+      form.useCustomValues = false
+      form.window_values = []
     } else {
       form.expected_value = ''
+      if (form.useCustomValues) {
+        normaliseFormWindowValues()
+      }
     }
   }
 )
@@ -130,6 +187,41 @@ watch(
       form.yearlyAlignment = defaultYearAlignment.value
     }
     applyFrequencyDefaults()
+    if (!canUseCustomWindowValues.value) {
+      form.useCustomValues = false
+      form.window_values = []
+    } else if (form.useCustomValues) {
+      normaliseFormWindowValues()
+    }
+  }
+)
+
+watch(
+  () => form.useCustomValues,
+  (enabled) => {
+    if (enabled) {
+      normaliseFormWindowValues()
+    } else {
+      form.window_values = []
+    }
+  }
+)
+
+watch(
+  () => windowOptions.value.length,
+  () => {
+    if (form.useCustomValues) {
+      normaliseFormWindowValues()
+    }
+  }
+)
+
+watch(
+  () => form.value,
+  () => {
+    if (form.useCustomValues && canUseCustomWindowValues.value) {
+      normaliseFormWindowValues()
+    }
   }
 )
 
@@ -215,6 +307,29 @@ function applyFrequencyDefaults() {
   form.expiration_date = computeDefaultExpiration(form.frequency)
 }
 
+function normaliseFormWindowValues() {
+  if (!form.useCustomValues || !canUseCustomWindowValues.value) {
+    form.window_values = []
+    return
+  }
+  const count = WINDOW_COUNTS[form.frequency] || 0
+  const values = Array.isArray(form.window_values) ? [...form.window_values] : []
+  const trimmed = values.slice(0, count)
+  const baseValue =
+    form.value !== '' && form.value != null ? form.value.toString() : ''
+  while (trimmed.length < count) {
+    trimmed.push(baseValue)
+  }
+  if (baseValue !== '') {
+    for (let index = 0; index < trimmed.length; index += 1) {
+      if (trimmed[index] === '') {
+        trimmed[index] = baseValue
+      }
+    }
+  }
+  form.window_values = trimmed
+}
+
 function resetForm() {
   form.name = ''
   form.description = ''
@@ -224,6 +339,8 @@ function resetForm() {
   form.expected_value = ''
   form.expiration_date = ''
   form.yearlyAlignment = defaultYearAlignment.value
+  form.useCustomValues = false
+  form.window_values = []
   autoExpiration.value = true
   applyFrequencyDefaults()
 }
@@ -257,6 +374,10 @@ function populateForm(benefit) {
       : ''
   form.expiration_date = benefit.expiration_date || ''
   form.yearlyAlignment = defaultYearAlignment.value
+  form.useCustomValues = Array.isArray(benefit.window_values) && benefit.window_values.length > 0
+  form.window_values = form.useCustomValues
+    ? benefit.window_values.map((value) => value.toString())
+    : []
   if (benefit.frequency === 'yearly' && benefit.expiration_date) {
     const expirationDate = new Date(`${benefit.expiration_date}T00:00:00`)
     const cycleAtExpiration = computeCardCycle(props.card, expirationDate)
@@ -270,6 +391,12 @@ function populateForm(benefit) {
     } else if (benefit.expiration_date === calendarEndString) {
       form.yearlyAlignment = 'calendar'
     }
+  }
+  if (!canUseCustomWindowValues.value) {
+    form.useCustomValues = false
+    form.window_values = []
+  } else if (form.useCustomValues) {
+    normaliseFormWindowValues()
   }
   benefitModalOpen.value = true
 }
@@ -301,6 +428,11 @@ function submitForm() {
   }
   if (form.type !== 'cumulative') {
     payload.value = Number(form.value)
+    if (form.useCustomValues && canUseCustomWindowValues.value) {
+      payload.window_values = form.window_values.map((value) => Number(value || 0))
+    } else if (formMode.value === 'edit') {
+      payload.window_values = null
+    }
   } else {
     const rawExpected =
       typeof form.expected_value === 'string'
@@ -465,7 +597,7 @@ function handleCardDelete() {
             type="number"
             min="0"
             step="0.01"
-            placeholder="Value"
+            :placeholder="valuePlaceholder"
             :required="form.type !== 'cumulative'"
           />
           <input
@@ -482,6 +614,29 @@ function handleCardDelete() {
             </option>
           </select>
           <input v-model="form.expiration_date" type="date" @input="handleExpirationInput" />
+        </div>
+        <div
+          v-if="form.type !== 'cumulative' && canUseCustomWindowValues"
+          class="custom-window-toggle"
+        >
+          <label class="checkbox-option">
+            <input v-model="form.useCustomValues" type="checkbox" />
+            <span>Set custom values for each {{ windowValueDescriptor }}</span>
+          </label>
+        </div>
+        <div
+          v-if="form.useCustomValues && canUseCustomWindowValues"
+          class="window-values-grid"
+        >
+          <label v-for="window in windowOptions" :key="window.index">
+            <span>{{ window.label }}</span>
+            <input
+              v-model="form.window_values[window.index - 1]"
+              type="number"
+              min="0"
+              step="0.01"
+            />
+          </label>
         </div>
         <div v-if="form.frequency === 'yearly'" class="yearly-options">
           <label class="radio-option">
@@ -600,6 +755,47 @@ function handleCardDelete() {
 
 strong {
   font-weight: 700;
+  color: #0f172a;
+}
+
+.custom-window-toggle {
+  margin-top: 0.75rem;
+}
+
+.checkbox-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: #475569;
+}
+
+.checkbox-option input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: #6366f1;
+}
+
+.window-values-grid {
+  margin-top: 0.75rem;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
+}
+
+.window-values-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: #475569;
+}
+
+.window-values-grid input {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid #cbd5f5;
+  border-radius: 0.4rem;
+  font-size: 0.9rem;
   color: #0f172a;
 }
 

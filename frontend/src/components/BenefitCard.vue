@@ -38,8 +38,10 @@ const statusTag = computed(() => {
       : { label: 'Available', tone: 'warning' }
   }
   if (type === 'incremental') {
-    const used = props.benefit.cycle_redemption_total || 0
-    const target = Number(props.benefit.value ?? 0)
+    const used = Number(props.benefit.current_window_total ?? 0)
+    const target = Number(
+      props.benefit.current_window_value ?? props.benefit.value ?? 0
+    )
     if (used >= target && target > 0) {
       return { label: 'Completed', tone: 'success' }
     }
@@ -89,7 +91,9 @@ const incrementalProgress = computed(() => {
     return null
   }
   const used = Number(props.benefit.cycle_redemption_total ?? 0)
-  const target = Number(props.benefit.value ?? 0)
+  const target = Number(
+    props.benefit.cycle_target_value ?? props.benefit.value ?? 0
+  )
   const remaining = props.benefit.remaining_value ?? Math.max(target - used, 0)
   const percent = target > 0 ? Math.min((used / target) * 100, 100) : used > 0 ? 100 : 0
   const statusText = target <= 0
@@ -117,7 +121,11 @@ const redemptionSummary = computed(() => {
     }
     return `Recorded $${used.toFixed(2)} this cycle`
   }
-  return `Worth $${Number(props.benefit.value ?? 0).toFixed(2)}`
+  const value =
+    props.benefit.current_window_value != null
+      ? Number(props.benefit.current_window_value)
+      : Number(props.benefit.value ?? 0)
+  return `Worth $${value.toFixed(2)} this window`
 })
 
 const showHistoryButton = computed(
@@ -127,6 +135,23 @@ const showHistoryButton = computed(
 const isRecurringBenefit = computed(() =>
   ['monthly', 'quarterly', 'semiannual'].includes(props.benefit.frequency)
 )
+
+const currentWindowValue = computed(() => {
+  if (props.benefit.current_window_value != null) {
+    return Number(props.benefit.current_window_value)
+  }
+  if (props.benefit.value != null) {
+    return Number(props.benefit.value)
+  }
+  return null
+})
+
+const windowValueLabel = computed(() => {
+  const value = currentWindowValue.value
+  return value != null ? value.toFixed(2) : '0.00'
+})
+
+const annualRedeemed = computed(() => Number(props.benefit.cycle_redemption_total ?? 0))
 </script>
 
 <template>
@@ -143,8 +168,13 @@ const isRecurringBenefit = computed(() =>
             </div>
             <span v-if="currentWindowLabel" class="benefit-window">{{ currentWindowLabel }}</span>
           </div>
-          <div class="tag" :class="statusTag.tone">
-            <span>{{ statusTag.label }}</span>
+          <div class="benefit-status">
+            <div class="tag" :class="statusTag.tone">
+              <span>{{ statusTag.label }}</span>
+            </div>
+            <span class="benefit-year-total">
+              Total: <strong>${{ annualRedeemed.toFixed(2) }}</strong>
+            </span>
           </div>
         </div>
       </div>
@@ -211,7 +241,7 @@ const isRecurringBenefit = computed(() =>
     <footer class="benefit-footer">
       <div>
         <strong v-if="benefit.type !== 'cumulative'">
-          ${{ Number(benefit.value ?? 0).toFixed(2) }}
+          ${{ windowValueLabel }}
         </strong>
         <strong v-else>
           <template v-if="benefit.expected_value != null">
@@ -326,6 +356,31 @@ const isRecurringBenefit = computed(() =>
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.5rem;
+}
+
+.benefit-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.2rem;
+  text-align: right;
+  min-width: 0;
+  margin-left: auto;
+}
+
+.benefit-status .tag {
+  white-space: nowrap;
+}
+
+.benefit-year-total {
+  font-size: 0.72rem;
+  color: #475569;
+  font-weight: 500;
+}
+
+.benefit-year-total strong {
+  font-weight: 600;
+  color: #0f172a;
 }
 
 .benefit-meta {

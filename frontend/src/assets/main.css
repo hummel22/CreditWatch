@@ -360,6 +360,47 @@ textarea {
   align-items: center;
 }
 
+.admin-custom-toggle {
+  margin-top: 0.5rem;
+}
+
+.checkbox-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: #475569;
+}
+
+.checkbox-option input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: #6366f1;
+}
+
+.admin-window-values {
+  margin-top: 0.75rem;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
+}
+
+.admin-window-values label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: #475569;
+}
+
+.admin-window-values input {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 0.4rem;
+  font-size: 0.9rem;
+  color: #0f172a;
+}
+
 .card {
   background: linear-gradient(145deg, #ffffff 40%, #f8fafc 100%);
   box-shadow: 0 20px 45px rgba(15, 23, 42, 0.12);

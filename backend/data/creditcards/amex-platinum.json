@@ -9,14 +9,28 @@
       "description": "$15 in monthly Uber Cash plus a $35 boost in December for rides or eats.",
       "frequency": "monthly",
       "type": "incremental",
-      "value": 200
+      "value": 15,
+      "window_values": [
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        35
+      ]
     },
     {
       "name": "Digital entertainment credit",
       "description": "$20 in monthly credits toward eligible streaming and news subscriptions.",
       "frequency": "monthly",
       "type": "incremental",
-      "value": 240
+      "value": 20
     },
     {
       "name": "Equinox credit",
@@ -30,7 +44,7 @@
       "description": "$50 credits twice per year at Saks Fifth Avenue.",
       "frequency": "semiannual",
       "type": "incremental",
-      "value": 100
+      "value": 50
     },
     {
       "name": "Prepaid hotel credit",
@@ -58,7 +72,7 @@
       "description": "Monthly statement credits to offset Walmart+ membership dues (plus Paramount+ access).",
       "frequency": "monthly",
       "type": "incremental",
-      "value": 155
+      "value": 12.95
     },
     {
       "name": "Amex Offers",

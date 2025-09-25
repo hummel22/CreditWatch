@@ -19,7 +19,7 @@ export function isBenefitCompleted(benefit) {
     return Boolean(benefit.is_used)
   }
   if (benefit.type === 'incremental') {
-    const target = Number(benefit.value ?? 0)
+    const target = Number(benefit.cycle_target_value ?? benefit.value ?? 0)
     const used = Number(benefit.cycle_redemption_total ?? 0)
     return target > 0 && used >= target
   }

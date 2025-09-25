@@ -256,6 +256,69 @@ class NotificationDispatchResult(SQLModel):
     categories: Dict[str, List[NotificationBenefitSummary]] = Field(default_factory=dict)
 
 
+class BackupSettingsBase(SQLModel):
+    drive_folder_id: str
+
+    @field_validator("drive_folder_id")
+    @classmethod
+    def validate_drive_folder_id(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("A Google Drive folder ID is required.")
+        return cleaned
+
+
+class BackupSettingsWrite(BackupSettingsBase):
+    service_account_json: str
+
+    @field_validator("service_account_json")
+    @classmethod
+    def validate_service_account_json(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Service account credentials are required.")
+        return cleaned
+
+
+class BackupSettingsUpdate(SQLModel):
+    drive_folder_id: Optional[str] = None
+    service_account_json: Optional[str] = None
+
+    @field_validator("drive_folder_id")
+    @classmethod
+    def normalise_drive_folder_id(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("A Google Drive folder ID is required when provided.")
+        return cleaned
+
+    @field_validator("service_account_json")
+    @classmethod
+    def normalise_service_account_json(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Service account credentials cannot be blank.")
+        return cleaned
+
+
+class BackupSettingsRead(SQLModel):
+    drive_folder_id: Optional[str] = None
+    service_account_email: Optional[str] = None
+    is_configured: bool = False
+    last_backup_at: Optional[datetime] = None
+    last_backup_filename: Optional[str] = None
+    last_backup_size: Optional[int] = Field(default=None, ge=0)
+    last_backup_error: Optional[str] = None
+    next_backup_at: Optional[datetime] = None
+    last_result_at: Optional[datetime] = None
+    last_result_message: Optional[str] = None
+    last_result_success: Optional[bool] = None
+
+
 class PreconfiguredBenefitBase(SQLModel):
     name: str
     description: Optional[str] = None

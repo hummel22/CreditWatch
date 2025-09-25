@@ -3,12 +3,14 @@
 # Import this file into Home Assistant (Settings → Automations & Scenes → Import blueprint)
 # to create an automation that listens for webhook calls from the CreditWatch backend.
 # Set the ``Webhook ID`` blueprint input to the identifier configured in the backend.
-# Update the ``default_target`` dictionary with the notification services that correspond
+# Update the ``target_map`` dictionary with the notification services that correspond
 # to your devices. The backend will send a ``target`` slug that maps to one of these keys.
+# Each entry should be a list so multiple notify services can be triggered for a single
+# target.
 #
 # Example: if your mobile device is exposed as ``notify.mobile_app_janes_iphone`` and you
 # want it to be the default target, configure the backend with ``default_target: primary``
-# and set ``primary: notify.mobile_app_janes_iphone`` below.
+# and set ``primary`` to a list containing that notify service below.
 blueprint:
   name: CreditWatch notification webhook
   description: Handle CreditWatch reminder notifications via a webhook
@@ -32,20 +34,33 @@ trigger:
 variables:
   payload: "{{ trigger.json | default({}) }}"
   target_slug: "{{ payload.target | default('default') }}"
-  default_target: notify.mobile_app_example_device
+  default_target: default
   target_map:
-    default: "{{ default_target }}"
-    # primary: notify.mobile_app_primary_phone
-    # tablet: notify.mobile_app_kitchen_tablet
-  notify_service: "{{ target_map.get(target_slug, default_target) }}"
+    default:
+      - notify.mobile_app_example_device
+    # primary:
+    #   - notify.mobile_app_primary_phone
+    #   - notify.mobile_app_secondary_phone
+    # tablet:
+    #   - notify.mobile_app_kitchen_tablet
+  notify_services: >-
+    {% set services = target_map.get(target_slug, target_map.default) %}
+    {% if services is string %}
+      {{ [services] }}
+    {% else %}
+      {{ services | list }}
+    {% endif %}
 
 condition: []
 
 action:
-  - service: "{{ notify_service }}"
-    data:
-      title: "{{ payload.title | default('CreditWatch notification') }}"
-      message: "{{ payload.message | default('') }}"
-      data: "{{ payload.data | default({}) }}"
+  - repeat:
+      for_each: "{{ notify_services }}"
+      sequence:
+        - service: "{{ repeat.item }}"
+          data:
+            title: "{{ payload.title | default('CreditWatch notification') }}"
+            message: "{{ payload.message | default('') }}"
+            data: "{{ payload.data | default({}) }}"
 
 mode: single

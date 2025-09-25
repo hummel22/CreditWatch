@@ -51,13 +51,22 @@ class NotificationService:
 
         with Session(self._engine) as session:
             settings = crud.get_notification_settings(session)
-        return await self._send_payload(
+        result = await self._send_payload(
             settings,
             title or "CreditWatch notification",
             message,
             {},
             target_override=target_override,
         )
+        await asyncio.to_thread(
+            self._record_history,
+            "custom",
+            title or "CreditWatch notification",
+            message,
+            result.target,
+            result,
+        )
+        return result
 
     async def send_daily_notifications(
         self, target_date: Optional[date] = None, *, target_override: Optional[str] = None
@@ -68,14 +77,17 @@ class NotificationService:
         with Session(self._engine) as session:
             categories = self._collect_categories(session, target)
             settings = crud.get_notification_settings(session)
+        title = f"CreditWatch reminders for {target.strftime('%B %d, %Y')}"
+        body: Optional[str] = None
         if not categories:
             result = NotificationDispatchResult(
                 sent=False,
                 message="No expiring benefits to report.",
                 categories={},
+                target=target_override
+                or (settings.default_target if settings else None),
             )
         else:
-            title = f"CreditWatch reminders for {target.strftime('%B %d, %Y')}"
             body = self._render_daily_body(target, categories)
             result = await self._send_payload(
                 settings,
@@ -86,6 +98,14 @@ class NotificationService:
             )
         if target_date is None:
             self._last_run_date = target
+        await asyncio.to_thread(
+            self._record_history,
+            "daily" if target_date is None else "daily_test",
+            title,
+            body,
+            result.target,
+            result,
+        )
         return result
 
     async def _run_scheduler(self) -> None:
@@ -196,22 +216,25 @@ class NotificationService:
         *,
         target_override: Optional[str] = None,
     ) -> NotificationDispatchResult:
+        target_value = target_override
         if settings is None:
             return NotificationDispatchResult(
                 sent=False,
                 message="Notification settings have not been configured.",
                 categories=categories,
+                target=target_value,
             )
+        target_value = target_override or settings.default_target
         if not settings.enabled:
             return NotificationDispatchResult(
                 sent=False,
                 message="Notifications are currently disabled.",
                 categories=categories,
+                target=target_value,
             )
         payload = {"title": title, "message": message}
-        target = target_override or settings.default_target
-        if target:
-            payload["target"] = target
+        if target_value:
+            payload["target"] = target_value
         url = f"{settings.base_url}/api/webhook/{settings.webhook_id}"
         try:
             async with httpx.AsyncClient(timeout=10) as client:
@@ -223,9 +246,36 @@ class NotificationService:
                 sent=False,
                 message=f"Failed to deliver notification: {exc}",
                 categories=categories,
+                target=target_value,
             )
         return NotificationDispatchResult(
             sent=True,
             message="Notification delivered successfully.",
             categories=categories,
+            target=target_value,
         )
+
+    def _record_history(
+        self,
+        event_type: str,
+        title: Optional[str],
+        body: Optional[str],
+        target: Optional[str],
+        result: NotificationDispatchResult,
+    ) -> None:
+        try:
+            payload = result.model_dump()
+            categories = payload.get("categories") or {}
+            with Session(self._engine) as session:
+                crud.log_notification_event(
+                    session,
+                    event_type=event_type,
+                    title=title,
+                    body=body,
+                    target=target,
+                    sent=bool(result.sent),
+                    response_message=result.message,
+                    categories=categories,
+                )
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception("Failed to record notification history")

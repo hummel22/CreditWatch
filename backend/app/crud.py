@@ -7,12 +7,13 @@ from sqlalchemy import func
 from sqlmodel import Session, select
 
 from .models import (
+    BackupSettings,
     Benefit,
     BenefitFrequency,
     BenefitRedemption,
     BenefitType,
     CreditCard,
-    BackupSettings,
+    NotificationLog,
     NotificationSettings,
 )
 from .schemas import (
@@ -267,6 +268,41 @@ def record_backup_failure(
     session.commit()
     session.refresh(settings)
     return settings
+
+
+def log_notification_event(
+    session: Session,
+    *,
+    event_type: str,
+    title: str | None,
+    body: str | None,
+    target: str | None,
+    sent: bool,
+    response_message: str | None,
+    categories: Dict[str, object] | None,
+) -> NotificationLog:
+    entry = NotificationLog(
+        event_type=event_type,
+        title=title,
+        body=body,
+        target=target,
+        sent=sent,
+        response_message=response_message,
+        categories=categories or {},
+    )
+    session.add(entry)
+    session.commit()
+    session.refresh(entry)
+    return entry
+
+
+def list_notification_logs(session: Session, *, limit: int = 50) -> List[NotificationLog]:
+    statement = (
+        select(NotificationLog)
+        .order_by(NotificationLog.created_at.desc())
+        .limit(max(1, limit))
+    )
+    return session.exec(statement).all()
 
 
 def list_benefit_redemptions(session: Session, benefit_id: int) -> List[BenefitRedemption]:

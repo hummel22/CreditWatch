@@ -108,6 +108,30 @@ const notificationTestResults = reactive({
   daily: null
 })
 
+const notificationHistoryModal = reactive({
+  open: false,
+  loading: false,
+  entries: [],
+  error: ''
+})
+
+const backupTestLoading = ref(false)
+const backupTestMessage = ref('')
+const backupTestError = ref('')
+
+const backupRunLoading = ref(false)
+const backupRunMessage = ref('')
+const backupRunError = ref('')
+
+const confirmDialog = reactive({
+  open: false,
+  title: '',
+  message: '',
+  confirmLabel: 'Confirm',
+  cancelLabel: 'Cancel',
+  resolve: null
+})
+
 const isDashboardView = computed(() => currentView.value === 'dashboard')
 const isBenefitsView = computed(() => currentView.value === 'benefits')
 const isAdminView = computed(() => currentView.value === 'admin')
@@ -162,6 +186,8 @@ watch(
   () => {
     backupSettingsError.value = ''
     backupSettingsSuccess.value = ''
+    backupTestError.value = ''
+    backupTestMessage.value = ''
   }
 )
 
@@ -376,6 +402,51 @@ async function saveBackupSettings() {
   }
 }
 
+async function testBackupConnection() {
+  backupTestError.value = ''
+  backupTestMessage.value = ''
+  const server = backupSettings.server.trim()
+  const share = backupSettings.share.trim()
+  const directory = backupSettings.directory.trim()
+  const username = backupSettings.username.trim()
+  const domain = backupSettings.domain.trim()
+  const password = backupSettings.password.trim()
+  if (!server || !share || !username) {
+    backupTestError.value = 'Provide the SMB server, share, and username before testing.'
+    return
+  }
+  const payload = {
+    server,
+    share,
+    directory: directory ? directory : '',
+    username,
+    use_stored_password: false
+  }
+  if (domain) {
+    payload.domain = domain
+  }
+  if (password) {
+    payload.password = password
+  } else if (backupSettingsMeta.has_password) {
+    payload.use_stored_password = true
+  } else {
+    backupTestError.value = 'Enter the SMB password to test the connection.'
+    return
+  }
+  backupTestLoading.value = true
+  try {
+    const response = await apiClient.post('/api/admin/backup/test', payload)
+    backupTestMessage.value = response.data?.detail || 'Connection successful.'
+  } catch (err) {
+    backupTestError.value = extractErrorMessage(
+      err,
+      'Unable to test the backup connection.'
+    )
+  } finally {
+    backupTestLoading.value = false
+  }
+}
+
 function handleBackupFileChange(event) {
   const files = event?.target?.files
   const [file] = files && files.length ? files : [null]
@@ -414,6 +485,23 @@ async function submitBackupImport() {
     backupImport.error = extractErrorMessage(err, 'Unable to import the database file.')
   } finally {
     backupImport.loading = false
+  }
+}
+
+async function runBackupNow() {
+  backupRunError.value = ''
+  backupRunMessage.value = ''
+  backupRunLoading.value = true
+  try {
+    const response = await apiClient.post('/api/admin/backup/run')
+    if (response.data) {
+      applyBackupSettings(response.data)
+    }
+    backupRunMessage.value = 'Backup completed successfully.'
+  } catch (err) {
+    backupRunError.value = extractErrorMessage(err, 'Unable to run the backup now.')
+  } finally {
+    backupRunLoading.value = false
   }
 }
 
@@ -464,6 +552,75 @@ function formatNotificationTimestamp(value) {
     return ''
   }
   return date.toLocaleString()
+}
+
+function formatNotificationEventType(value) {
+  if (!value) {
+    return ''
+  }
+  return value
+    .toString()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+async function openNotificationHistory() {
+  notificationHistoryModal.open = true
+  notificationHistoryModal.loading = true
+  notificationHistoryModal.error = ''
+  notificationHistoryModal.entries = []
+  try {
+    const response = await apiClient.get('/api/admin/notifications/history')
+    notificationHistoryModal.entries = Array.isArray(response.data) ? response.data : []
+  } catch (err) {
+    notificationHistoryModal.error = extractErrorMessage(
+      err,
+      'Unable to load notification history.'
+    )
+    notificationHistoryModal.entries = []
+  } finally {
+    notificationHistoryModal.loading = false
+  }
+}
+
+function closeNotificationHistory() {
+  notificationHistoryModal.open = false
+  notificationHistoryModal.loading = false
+}
+
+function requestConfirmation(options = {}) {
+  return new Promise((resolve) => {
+    confirmDialog.title = options.title || 'Confirm action'
+    confirmDialog.message = options.message || 'Are you sure you want to continue?'
+    confirmDialog.confirmLabel = options.confirmLabel || 'Confirm'
+    confirmDialog.cancelLabel = options.cancelLabel || 'Cancel'
+    confirmDialog.open = true
+    confirmDialog.resolve = (value) => {
+      confirmDialog.open = false
+      confirmDialog.resolve = null
+      resolve(Boolean(value))
+    }
+  })
+}
+
+function confirmDialogConfirm() {
+  if (typeof confirmDialog.resolve === 'function') {
+    confirmDialog.resolve(true)
+  } else {
+    confirmDialog.open = false
+  }
+}
+
+function confirmDialogCancel() {
+  if (typeof confirmDialog.resolve === 'function') {
+    confirmDialog.resolve(false)
+  } else {
+    confirmDialog.open = false
+  }
+}
+
+function handleConfirmDialogClose() {
+  confirmDialogCancel()
 }
 
 async function sendCustomNotificationTest() {
@@ -1151,6 +1308,23 @@ async function handleToggleBenefit({ id, value }) {
 }
 
 async function handleDeleteBenefit(benefitId) {
+  const card =
+    cards.value.find((entry) =>
+      Array.isArray(entry.benefits) && entry.benefits.some((benefit) => benefit.id === benefitId)
+    ) || null
+  const benefit = card
+    ? card.benefits.find((item) => item.id === benefitId)
+    : null
+  const confirmed = await requestConfirmation({
+    title: 'Delete benefit',
+    message: benefit
+      ? `Delete the "${benefit.name}" benefit${card ? ` from ${card.card_name}` : ''}? This cannot be undone.`
+      : 'Delete this benefit? This cannot be undone.',
+    confirmLabel: 'Delete benefit'
+  })
+  if (!confirmed) {
+    return
+  }
   try {
     await apiClient.delete(`/api/benefits/${benefitId}`)
     const refreshed = await apiClient.get('/api/cards')
@@ -1162,6 +1336,17 @@ async function handleDeleteBenefit(benefitId) {
 }
 
 async function handleDeleteCard(cardId) {
+  const card = findCard(cardId)
+  const confirmed = await requestConfirmation({
+    title: 'Delete card',
+    message: card
+      ? `Delete ${card.card_name}? All associated benefits and history will be removed.`
+      : 'Delete this card? All associated benefits and history will be removed.',
+    confirmLabel: 'Delete card'
+  })
+  if (!confirmed) {
+    return
+  }
   try {
     await apiClient.delete(`/api/cards/${cardId}`)
     await loadCards()
@@ -1300,6 +1485,17 @@ async function handleViewHistory(payload) {
 }
 
 async function handleUpdateBenefit({ cardId, benefitId, payload }) {
+  const benefit = findBenefit(cardId, benefitId)
+  const confirmed = await requestConfirmation({
+    title: 'Confirm benefit update',
+    message: benefit
+      ? `Save changes to "${benefit.name}"?`
+      : 'Save changes to this benefit?',
+    confirmLabel: 'Save changes'
+  })
+  if (!confirmed) {
+    return
+  }
   try {
     const body = { ...payload }
     if (body.value === undefined) {
@@ -1344,6 +1540,17 @@ async function submitEditCard() {
   const trimmedLastDigits = editCardModal.form.last_four.trim()
   if (!/^\d{4,5}$/.test(trimmedLastDigits)) {
     error.value = 'Please provide the last four or five digits.'
+    return
+  }
+  const card = findCard(editCardModal.cardId)
+  const confirmed = await requestConfirmation({
+    title: 'Confirm card update',
+    message: card
+      ? `Save changes to ${card.card_name}?`
+      : 'Save changes to this card?',
+    confirmLabel: 'Save card'
+  })
+  if (!confirmed) {
     return
   }
   try {
@@ -1831,6 +2038,11 @@ onMounted(async () => {
                 Configure the webhook connection used to deliver reminder notifications.
               </p>
             </div>
+            <div class="section-actions">
+              <button class="link-button" type="button" @click="openNotificationHistory">
+                View history
+              </button>
+            </div>
           </div>
           <div v-if="notificationSettingsLoading" class="empty-state">
             Loading notification settings...
@@ -2073,7 +2285,23 @@ onMounted(async () => {
                     {{ backupSettingsSuccess }}
                   </p>
                 </div>
+                <div class="backup-test-messages">
+                  <p v-if="backupTestError" class="helper-text error-text">
+                    {{ backupTestError }}
+                  </p>
+                  <p v-else-if="backupTestMessage" class="helper-text success-text">
+                    {{ backupTestMessage }}
+                  </p>
+                </div>
                 <div class="backup-actions">
+                  <button
+                    class="primary-button secondary"
+                    type="button"
+                    :disabled="backupTestLoading || backupSettingsSaving"
+                    @click="testBackupConnection"
+                  >
+                    {{ backupTestLoading ? 'Testing…' : 'Test connection' }}
+                  </button>
                   <button class="primary-button" type="submit" :disabled="backupSettingsSaving">
                     {{ backupSettingsSaving ? 'Saving…' : 'Save settings' }}
                   </button>
@@ -2114,6 +2342,24 @@ onMounted(async () => {
                   <p v-if="backupSettingsMeta.last_backup_error" class="helper-text error-text">
                     Last backup failed: {{ backupSettingsMeta.last_backup_error }}
                   </p>
+                  <div class="backup-run-feedback">
+                    <p v-if="backupRunError" class="helper-text error-text">
+                      {{ backupRunError }}
+                    </p>
+                    <p v-else-if="backupRunMessage" class="helper-text success-text">
+                      {{ backupRunMessage }}
+                    </p>
+                  </div>
+                  <div class="backup-status-actions">
+                    <button
+                      class="primary-button secondary"
+                      type="button"
+                      :disabled="backupRunLoading || !backupSettings.id"
+                      @click="runBackupNow"
+                    >
+                      {{ backupRunLoading ? 'Running…' : 'Run backup now' }}
+                    </button>
+                  </div>
                 </div>
                 <form class="backup-import-form" @submit.prevent="submitBackupImport">
                   <h3 class="backup-import-title">Import a backup</h3>
@@ -2649,5 +2895,69 @@ onMounted(async () => {
         </button>
       </div>
     </form>
+  </BaseModal>
+
+  <BaseModal
+    :open="notificationHistoryModal.open"
+    title="Notification history"
+    @close="closeNotificationHistory"
+  >
+    <div v-if="notificationHistoryModal.loading" class="history-loading">Loading history...</div>
+    <p v-else-if="notificationHistoryModal.error" class="helper-text error-text">
+      {{ notificationHistoryModal.error }}
+    </p>
+    <div
+      v-else-if="notificationHistoryModal.entries.length"
+      class="notification-history-table-wrapper"
+    >
+      <table class="notification-history-table">
+        <thead>
+          <tr>
+            <th scope="col">Sent at</th>
+            <th scope="col">Type</th>
+            <th scope="col">Title</th>
+            <th scope="col">Target</th>
+            <th scope="col">Status</th>
+            <th scope="col">Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="entry in notificationHistoryModal.entries" :key="entry.id">
+            <td>{{ formatNotificationTimestamp(entry.created_at) || '–' }}</td>
+            <td>{{ formatNotificationEventType(entry.event_type) || '–' }}</td>
+            <td>{{ entry.title || '–' }}</td>
+            <td>{{ entry.target || '–' }}</td>
+            <td>
+              <span :class="['status-pill', entry.sent ? 'success' : 'error']">
+                {{ entry.sent ? 'Delivered' : 'Not sent' }}
+              </span>
+            </td>
+            <td>{{ entry.response_message || '–' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p v-else class="empty-state">No notifications have been recorded yet.</p>
+    <template #footer>
+      <button class="primary-button secondary" type="button" @click="closeNotificationHistory">
+        Close
+      </button>
+    </template>
+  </BaseModal>
+
+  <BaseModal
+    :open="confirmDialog.open"
+    :title="confirmDialog.title"
+    @close="handleConfirmDialogClose"
+  >
+    <p>{{ confirmDialog.message }}</p>
+    <template #footer>
+      <button class="primary-button secondary" type="button" @click="confirmDialogCancel">
+        {{ confirmDialog.cancelLabel }}
+      </button>
+      <button class="primary-button" type="button" @click="confirmDialogConfirm">
+        {{ confirmDialog.confirmLabel }}
+      </button>
+    </template>
   </BaseModal>
 </template>

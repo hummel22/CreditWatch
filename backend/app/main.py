@@ -8,12 +8,21 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile, status
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    HTTPException,
+    Query,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session
 
 from . import crud
-from .backup import BackupService, refresh_backup_settings, schedule_backup_after_change
+from .backup import BackupConfig, BackupService, refresh_backup_settings, schedule_backup_after_change
 from .database import DATABASE_PATH, engine, get_session, init_db
 from .models import (
     BackupSettings,
@@ -32,12 +41,15 @@ from .schemas import (
     BenefitRead,
     BenefitUpdate,
     BenefitUsageUpdate,
+    BackupConnectionTestRequest,
+    BackupConnectionTestResult,
     BackupSettingsRead,
     BackupSettingsUpdate,
     BackupSettingsWrite,
     CreditCardCreate,
     CreditCardUpdate,
     CreditCardWithBenefits,
+    NotificationLogRead,
     NotificationCustomMessage,
     NotificationDailyTestRequest,
     NotificationDispatchResult,
@@ -243,6 +255,21 @@ async def trigger_daily_notification_test(
 
 
 @app.get(
+    "/api/admin/notifications/history",
+    response_model=List[NotificationLogRead],
+)
+def get_notification_history_endpoint(
+    limit: int = Query(50, ge=1, le=200),
+    session: Session = Depends(get_session),
+) -> List[NotificationLogRead]:
+    records = crud.list_notification_logs(session, limit=limit)
+    return [
+        NotificationLogRead.model_validate(record, from_attributes=True)
+        for record in records
+    ]
+
+
+@app.get(
     "/api/admin/backup/settings",
     response_model=Optional[BackupSettingsRead],
 )
@@ -282,6 +309,84 @@ def patch_backup_settings(
     refresh_backup_settings(app)
     schedule_backup_after_change(app)
     service = get_backup_service(ensure_ready=False)
+    return build_backup_settings_response(settings, service)
+
+
+@app.post(
+    "/api/admin/backup/test",
+    response_model=BackupConnectionTestResult,
+)
+def test_backup_connection(
+    payload: BackupConnectionTestRequest, session: Session = Depends(get_session)
+) -> BackupConnectionTestResult:
+    existing = crud.get_backup_settings(session)
+    password = payload.password
+    if not password and payload.use_stored_password:
+        if existing is None or not existing.password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Enter the SMB password before testing the connection.",
+            )
+        password = existing.password
+    if not password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Enter the SMB password before testing the connection.",
+        )
+    config = BackupConfig(
+        id=existing.id if existing and existing.id is not None else 1,
+        server=payload.server,
+        share=payload.share,
+        directory=payload.directory or "",
+        username=payload.username,
+        password=password,
+        domain=payload.domain,
+    )
+    service = get_backup_service(ensure_ready=False)
+    try:
+        if service is not None:
+            service.test_connection(config)
+        else:
+            temp_service = BackupService(engine=engine)
+            temp_service.test_connection(config)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    return BackupConnectionTestResult(ok=True, detail="Connection successful.")
+
+
+@app.post(
+    "/api/admin/backup/run",
+    response_model=BackupSettingsRead,
+)
+async def trigger_backup_now(
+    session: Session = Depends(get_session),
+) -> BackupSettingsRead:
+    service = get_backup_service()
+    if service is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Backup service is not ready.",
+        )
+    try:
+        await service.run_backup_now()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    settings = crud.get_backup_settings(session)
+    if settings is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Backup settings have not been configured.",
+        )
     return build_backup_settings_response(settings, service)
 
 

@@ -20,26 +20,23 @@ backend/data/   # Persisted SQLite database files (ignored from git)
 
 ## Getting started locally
 
-A convenience script is included to bootstrap both the Python and JavaScript dependencies and then start the backend API server.
+Two dedicated setup scripts are provided—one for the FastAPI backend and one for the Vue frontend.
+
+### Backend API
 
 ```bash
-./setup.sh
+./setup_backend.sh
 ```
 
-This command will:
+The script will create (or reuse) a local virtual environment in `.venv`, install Python dependencies, and start `uvicorn` on `http://127.0.0.1:8010`. Override the host or port by exporting `BACKEND_HOST` or `BACKEND_PORT` before running the script.
 
-1. Create a Python virtual environment in `.venv` (if missing) and install backend dependencies.
-2. Install the frontend dependencies with `npm install`.
-3. Launch the FastAPI development server on `http://127.0.0.1:8010`.
+### Frontend UI
 
-> **Note:** The Vue development server is not started automatically. After running `setup.sh`, open a new terminal and launch the UI:
->
-> ```bash
-> cd frontend
-> npm run dev -- --host
-> ```
->
-> The interface will be available at `http://127.0.0.1:5173` and is configured to proxy API requests to the backend.
+```bash
+./setup_frontend.sh
+```
+
+This script installs JavaScript dependencies, writes the required Vite environment variables, builds the production bundle, and serves it via `vite preview` on `http://127.0.0.1:4173`. Use `FRONTEND_HOST`, `FRONTEND_PORT`, `BACKEND_URL`, or `BACKEND_PORT` environment variables to customize the runtime configuration.
 
 ## Running with Docker Compose
 

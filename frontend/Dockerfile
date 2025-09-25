@@ -3,6 +3,10 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
+ARG VITE_BACKEND_URL=http://backend
+ARG VITE_BACKEND_PORT=8000
+ENV VITE_BACKEND_URL=${VITE_BACKEND_URL}
+ENV VITE_BACKEND_PORT=${VITE_BACKEND_PORT}
 RUN npm run build
 
 FROM nginx:1.27-alpine

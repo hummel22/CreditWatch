@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import axios from 'axios'
+import apiClient from './utils/apiClient'
 import BaseModal from './components/BaseModal.vue'
 import BenefitCard from './components/BenefitCard.vue'
 import CreditCardList from './components/CreditCardList.vue'
@@ -282,7 +282,7 @@ const benefitsCollection = computed(() => {
 
 async function loadFrequencies() {
   try {
-    const response = await axios.get('/api/frequencies')
+    const response = await apiClient.get('/api/frequencies')
     if (Array.isArray(response.data) && response.data.length) {
       frequencies.value = response.data
     }
@@ -295,7 +295,7 @@ async function loadCards() {
   loading.value = true
   error.value = ''
   try {
-    const response = await axios.get('/api/cards')
+    const response = await apiClient.get('/api/cards')
     cards.value = response.data
   } catch (err) {
     error.value = 'Unable to load cards. Ensure the backend is running.'
@@ -306,7 +306,7 @@ async function loadCards() {
 
 async function loadPreconfiguredCards() {
   try {
-    const response = await axios.get('/api/preconfigured/cards')
+    const response = await apiClient.get('/api/preconfigured/cards')
     if (Array.isArray(response.data)) {
       preconfiguredCards.value = response.data
     }
@@ -539,12 +539,12 @@ async function submitAdminCard() {
       })
     }
     if (adminModal.mode === 'edit') {
-      await axios.put(
+      await apiClient.put(
         `/api/admin/preconfigured/cards/${encodeURIComponent(adminModal.originalSlug)}`,
         payload
       )
     } else {
-      await axios.post('/api/admin/preconfigured/cards', payload)
+      await apiClient.post('/api/admin/preconfigured/cards', payload)
     }
     await loadPreconfiguredCards()
     closeAdminModal()
@@ -558,7 +558,7 @@ async function submitAdminCard() {
 
 async function handleDeletePreconfiguredCard(slug) {
   try {
-    await axios.delete(`/api/admin/preconfigured/cards/${encodeURIComponent(slug)}`)
+    await apiClient.delete(`/api/admin/preconfigured/cards/${encodeURIComponent(slug)}`)
     await loadPreconfiguredCards()
   } catch (err) {
     error.value = 'Unable to delete the preconfigured card.'
@@ -585,7 +585,7 @@ async function handleCreateCard() {
       fee_due_date: newCard.fee_due_date,
       year_tracking_mode: newCard.year_tracking_mode
     }
-    const response = await axios.post('/api/cards', payload)
+    const response = await apiClient.post('/api/cards', payload)
     const template = selectedTemplate.value
     if (template) {
       for (const benefit of template.benefits) {
@@ -613,7 +613,7 @@ async function handleCreateCard() {
         if (benefitPayload.value === undefined) {
           delete benefitPayload.value
         }
-        await axios.post(`/api/cards/${response.data.id}/benefits`, benefitPayload)
+        await apiClient.post(`/api/cards/${response.data.id}/benefits`, benefitPayload)
       }
       await loadCards()
     } else {
@@ -632,8 +632,8 @@ async function handleAddBenefit({ cardId, payload }) {
     if (body.value === undefined) {
       delete body.value
     }
-    await axios.post(`/api/cards/${cardId}/benefits`, body)
-    const refreshed = await axios.get('/api/cards')
+    await apiClient.post(`/api/cards/${cardId}/benefits`, body)
+    const refreshed = await apiClient.get('/api/cards')
     cards.value = refreshed.data
     await refreshOpenModals()
   } catch (err) {
@@ -643,8 +643,8 @@ async function handleAddBenefit({ cardId, payload }) {
 
 async function handleToggleBenefit({ id, value }) {
   try {
-    await axios.post(`/api/benefits/${id}/usage`, { is_used: value })
-    const refreshed = await axios.get('/api/cards')
+    await apiClient.post(`/api/benefits/${id}/usage`, { is_used: value })
+    const refreshed = await apiClient.get('/api/cards')
     cards.value = refreshed.data
     await refreshOpenModals()
   } catch (err) {
@@ -654,8 +654,8 @@ async function handleToggleBenefit({ id, value }) {
 
 async function handleDeleteBenefit(benefitId) {
   try {
-    await axios.delete(`/api/benefits/${benefitId}`)
-    const refreshed = await axios.get('/api/cards')
+    await apiClient.delete(`/api/benefits/${benefitId}`)
+    const refreshed = await apiClient.get('/api/cards')
     cards.value = refreshed.data
     await refreshOpenModals()
   } catch (err) {
@@ -665,7 +665,7 @@ async function handleDeleteBenefit(benefitId) {
 
 async function handleDeleteCard(cardId) {
   try {
-    await axios.delete(`/api/cards/${cardId}`)
+    await apiClient.delete(`/api/cards/${cardId}`)
     await loadCards()
     await refreshOpenModals()
   } catch (err) {
@@ -736,9 +736,9 @@ async function submitRedemption() {
       occurred_on: redemptionModal.occurred_on
     }
     if (redemptionModal.mode === 'edit' && redemptionModal.redemptionId) {
-      await axios.put(`/api/redemptions/${redemptionModal.redemptionId}`, body)
+      await apiClient.put(`/api/redemptions/${redemptionModal.redemptionId}`, body)
     } else {
-      await axios.post(`/api/benefits/${redemptionModal.benefitId}/redemptions`, body)
+      await apiClient.post(`/api/benefits/${redemptionModal.benefitId}/redemptions`, body)
     }
     await loadCards()
     await refreshOpenModals()
@@ -771,7 +771,7 @@ function handleEditRedemption(entry) {
 
 async function handleDeleteRedemption(entry) {
   try {
-    await axios.delete(`/api/redemptions/${entry.id}`)
+    await apiClient.delete(`/api/redemptions/${entry.id}`)
     await loadCards()
     await refreshOpenModals()
   } catch (err) {
@@ -807,7 +807,7 @@ async function handleUpdateBenefit({ cardId, benefitId, payload }) {
     if (body.value === undefined) {
       delete body.value
     }
-    await axios.put(`/api/benefits/${benefitId}`, body)
+    await apiClient.put(`/api/benefits/${benefitId}`, body)
     await loadCards()
     await refreshOpenModals()
   } catch (err) {
@@ -853,7 +853,7 @@ async function submitEditCard() {
       fee_due_date: editCardModal.form.fee_due_date,
       year_tracking_mode: editCardModal.form.year_tracking_mode
     }
-    await axios.put(`/api/cards/${editCardModal.cardId}`, payload)
+    await apiClient.put(`/api/cards/${editCardModal.cardId}`, payload)
     await loadCards()
     await refreshOpenModals()
     closeEditCardModal()
@@ -932,7 +932,7 @@ function formatCycleRange(start, end) {
 }
 
 async function fetchBenefitRedemptions(benefitId) {
-  const response = await axios.get(`/api/benefits/${benefitId}/redemptions`)
+  const response = await apiClient.get(`/api/benefits/${benefitId}/redemptions`)
   return Array.isArray(response.data) ? response.data : []
 }
 

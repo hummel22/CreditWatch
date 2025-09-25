@@ -24,7 +24,7 @@ from pathlib import Path
 path = Path(sys.argv[1])
 desired = {
     "VITE_BACKEND_URL": "http://127.0.0.1",
-    "VITE_BACKEND_PORT": "8000",
+    "VITE_BACKEND_PORT": "8010",
 }
 existing = {}
 if path.exists():
@@ -39,4 +39,4 @@ PY
 popd >/dev/null
 
 echo "Environment is ready. Starting the FastAPI server..."
-uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8010

@@ -3,7 +3,7 @@ import vue from '@vitejs/plugin-vue'
 
 function resolveBackendProxyTarget(env) {
   const rawUrl = env.VITE_BACKEND_URL || 'http://backend'
-  const rawPort = env.VITE_BACKEND_PORT || '8000'
+  const rawPort = env.VITE_BACKEND_PORT || '8010'
 
   let normalized = String(rawUrl).trim()
   if (!/^https?:\/\//i.test(normalized)) {
@@ -18,9 +18,9 @@ function resolveBackendProxyTarget(env) {
     return url.origin
   } catch (error) {
     console.warn(
-      'Invalid VITE_BACKEND_URL for Vite proxy target. Falling back to http://backend:8000.'
+      'Invalid VITE_BACKEND_URL for Vite proxy target. Falling back to http://backend:8010.'
     )
-    return 'http://backend:8000'
+    return 'http://backend:8010'
   }
 }
 

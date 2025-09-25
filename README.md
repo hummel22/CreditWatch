@@ -30,7 +30,7 @@ This command will:
 
 1. Create a Python virtual environment in `.venv` (if missing) and install backend dependencies.
 2. Install the frontend dependencies with `npm install`.
-3. Launch the FastAPI development server on `http://127.0.0.1:8000`.
+3. Launch the FastAPI development server on `http://127.0.0.1:8010`.
 
 > **Note:** The Vue development server is not started automatically. After running `setup.sh`, open a new terminal and launch the UI:
 >
@@ -49,7 +49,7 @@ If you prefer containers, the project ships with a ready-to-use Compose definiti
 docker compose up --build
 ```
 
-- The FastAPI backend is exposed on [http://localhost:8000](http://localhost:8000).
+- The FastAPI backend is exposed on [http://localhost:8010](http://localhost:8010).
 - The Vue.js frontend is served by Nginx on [http://localhost:5173](http://localhost:5173).
 - SQLite data persists between runs via the `backend/data` bind mount.
 
@@ -70,7 +70,7 @@ The backend exposes a REST API under `/api`. The most important endpoints are:
 | DELETE | `/api/benefits/{benefit_id}`          | Remove a benefit from a card.                |
 | GET    | `/api/frequencies`                    | Enumerate available benefit frequencies.     |
 
-FastAPI automatically exposes interactive docs at [http://localhost:8000/docs](http://localhost:8000/docs).
+FastAPI automatically exposes interactive docs at [http://localhost:8010/docs](http://localhost:8010/docs).
 
 ## Using the app
 

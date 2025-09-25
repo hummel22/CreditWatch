@@ -53,6 +53,28 @@ watch(currentView, () => {
   navDrawerOpen.value = false
 })
 
+function normaliseCard(card) {
+  if (!card || typeof card !== 'object') {
+    return card
+  }
+  const normalized = {
+    ...card,
+    year_tracking_mode:
+      card.year_tracking_mode === 'anniversary' ? 'anniversary' : 'calendar'
+  }
+  if (Array.isArray(card.benefits)) {
+    normalized.benefits = card.benefits.map((benefit) => ({ ...benefit }))
+  }
+  return normalized
+}
+
+function normaliseCards(collection) {
+  if (!Array.isArray(collection)) {
+    return []
+  }
+  return collection.map((card) => normaliseCard(card))
+}
+
 function resolveDefaultFrequency() {
   return frequencies.value[0] || 'monthly'
 }
@@ -296,7 +318,7 @@ async function loadCards() {
   error.value = ''
   try {
     const response = await apiClient.get('/api/cards')
-    cards.value = response.data
+    cards.value = normaliseCards(response.data)
   } catch (err) {
     error.value = 'Unable to load cards. Ensure the backend is running.'
   } finally {
@@ -586,6 +608,7 @@ async function handleCreateCard() {
       year_tracking_mode: newCard.year_tracking_mode
     }
     const response = await apiClient.post('/api/cards', payload)
+    const createdCard = normaliseCard(response.data)
     const template = selectedTemplate.value
     if (template) {
       for (const benefit of template.benefits) {
@@ -617,7 +640,7 @@ async function handleCreateCard() {
       }
       await loadCards()
     } else {
-      cards.value.push(response.data)
+      cards.value.push(createdCard)
     }
     closeCardModal()
     error.value = ''
@@ -634,7 +657,7 @@ async function handleAddBenefit({ cardId, payload }) {
     }
     await apiClient.post(`/api/cards/${cardId}/benefits`, body)
     const refreshed = await apiClient.get('/api/cards')
-    cards.value = refreshed.data
+    cards.value = normaliseCards(refreshed.data)
     await refreshOpenModals()
   } catch (err) {
     error.value = 'Unable to add the benefit. Please try again.'
@@ -645,7 +668,7 @@ async function handleToggleBenefit({ id, value }) {
   try {
     await apiClient.post(`/api/benefits/${id}/usage`, { is_used: value })
     const refreshed = await apiClient.get('/api/cards')
-    cards.value = refreshed.data
+    cards.value = normaliseCards(refreshed.data)
     await refreshOpenModals()
   } catch (err) {
     error.value = 'Unable to update the benefit usage.'
@@ -656,7 +679,7 @@ async function handleDeleteBenefit(benefitId) {
   try {
     await apiClient.delete(`/api/benefits/${benefitId}`)
     const refreshed = await apiClient.get('/api/cards')
-    cards.value = refreshed.data
+    cards.value = normaliseCards(refreshed.data)
     await refreshOpenModals()
   } catch (err) {
     error.value = 'Unable to remove the benefit.'

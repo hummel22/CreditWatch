@@ -114,6 +114,22 @@ class BackupService:
                 domain=settings.domain,
             )
 
+    async def run_backup_now(self) -> None:
+        """Execute a backup immediately using the current configuration."""
+
+        config = await asyncio.to_thread(self._load_config)
+        if config is None:
+            raise RuntimeError("Backup settings have not been configured.")
+        await asyncio.to_thread(self._perform_backup, config)
+        self._last_change = None
+        self._next_run = None
+        self._event.clear()
+
+    def test_connection(self, config: BackupConfig) -> None:
+        """Validate that the provided configuration can access the SMB share."""
+
+        self._verify_connection(config)
+
     def _perform_backup(self, config: BackupConfig) -> None:
         timestamp = datetime.utcnow()
         filename = f"creditwatch-{timestamp:%Y-%m}.db"
@@ -151,9 +167,7 @@ class BackupService:
 
     def _upload_to_smb(self, config: BackupConfig, source: Path, filename: str) -> None:
         smbclient.reset_connection_cache()
-        remote_base = f"//{config.server}/{config.share}"
-        directory = config.directory.replace("\\", "/").strip("/")
-        remote_dir = f"{remote_base}/{directory}" if directory else remote_base
+        remote_base, remote_dir, _ = self._resolve_remote_paths(config)
         remote_path = f"{remote_dir}/{filename}"
         smbclient.register_session(
             config.server,
@@ -170,6 +184,32 @@ class BackupService:
                         break
                     remote_file.write(chunk)
         smbclient.reset_connection_cache()
+
+    def _verify_connection(self, config: BackupConfig) -> None:
+        smbclient.reset_connection_cache()
+        remote_base, remote_dir, directory = self._resolve_remote_paths(config)
+        try:
+            smbclient.register_session(
+                config.server,
+                username=config.username,
+                password=config.password,
+                domain=config.domain,
+            )
+            target_path = remote_dir if directory else remote_base
+            try:
+                smbclient.listdir(target_path)
+            except FileNotFoundError as exc:
+                raise FileNotFoundError(
+                    "The specified directory could not be found on the SMB share."
+                ) from exc
+        finally:
+            smbclient.reset_connection_cache()
+
+    def _resolve_remote_paths(self, config: BackupConfig) -> tuple[str, str, str]:
+        remote_base = f"//{config.server}/{config.share}"
+        directory = config.directory.replace("\\", "/").strip("/")
+        remote_dir = f"{remote_base}/{directory}" if directory else remote_base
+        return remote_base, remote_dir, directory
 
 
 def schedule_backup_after_change(app: FastAPI) -> None:

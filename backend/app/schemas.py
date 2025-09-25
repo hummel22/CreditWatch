@@ -314,6 +314,24 @@ class BackupSettingsRead(BackupSettingsBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class BackupConnectionTestRequest(BackupSettingsBase):
+    password: Optional[str] = None
+    use_stored_password: bool = Field(default=False)
+
+    @field_validator("password", mode="before")
+    @classmethod
+    def trim_optional_password(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = str(value).strip()
+        return cleaned or None
+
+
+class BackupConnectionTestResult(SQLModel):
+    ok: bool
+    detail: str
+
+
 class NotificationSettingsWrite(NotificationSettingsBase):
     pass
 
@@ -356,6 +374,21 @@ class NotificationDispatchResult(SQLModel):
     sent: bool
     message: Optional[str] = None
     categories: Dict[str, List[NotificationBenefitSummary]] = Field(default_factory=dict)
+    target: Optional[str] = None
+
+
+class NotificationLogRead(SQLModel):
+    id: int
+    event_type: str
+    title: Optional[str] = None
+    body: Optional[str] = None
+    target: Optional[str] = None
+    sent: bool
+    response_message: Optional[str] = None
+    categories: Dict[str, List[NotificationBenefitSummary]] = Field(default_factory=dict)
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PreconfiguredBenefitBase(SQLModel):

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from enum import Enum
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from sqlalchemy import JSON, Column
 from sqlmodel import Field, SQLModel
@@ -123,4 +123,24 @@ class BackupSettings(SQLModel, table=True):
     last_backup_error: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class NotificationLog(SQLModel, table=True):
+    """Historical record of notification dispatch attempts."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    event_type: str = Field(index=True, description="Type of notification that was triggered")
+    title: Optional[str] = Field(default=None, description="Title sent to Home Assistant")
+    body: Optional[str] = Field(default=None, description="Body content sent to Home Assistant")
+    target: Optional[str] = Field(default=None, description="Notification target used for delivery")
+    sent: bool = Field(default=False, description="Whether the webhook call was successful")
+    response_message: Optional[str] = Field(
+        default=None, description="Human readable outcome message from the dispatcher"
+    )
+    categories: Dict[str, object] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, nullable=False, default=dict),
+        description="Summary payload that accompanied the notification",
+    )
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 

@@ -169,12 +169,7 @@ class BackupService:
         smbclient.reset_connection_cache()
         remote_base, remote_dir, _ = self._resolve_remote_paths(config)
         remote_path = f"{remote_dir}/{filename}"
-        smbclient.register_session(
-            config.server,
-            username=config.username,
-            password=config.password,
-            domain=config.domain,
-        )
+        self._register_session(config)
         smbclient.mkdirs(remote_dir, exist_ok=True)
         with smbclient.open_file(remote_path, mode="wb", buffering=0) as remote_file:
             with source.open("rb") as local_file:
@@ -189,12 +184,7 @@ class BackupService:
         smbclient.reset_connection_cache()
         remote_base, remote_dir, directory = self._resolve_remote_paths(config)
         try:
-            smbclient.register_session(
-                config.server,
-                username=config.username,
-                password=config.password,
-                domain=config.domain,
-            )
+            self._register_session(config)
             target_path = remote_dir if directory else remote_base
             try:
                 smbclient.listdir(target_path)
@@ -210,6 +200,16 @@ class BackupService:
         directory = config.directory.replace("\\", "/").strip("/")
         remote_dir = f"{remote_base}/{directory}" if directory else remote_base
         return remote_base, remote_dir, directory
+
+    def _register_session(self, config: BackupConfig) -> None:
+        credentials = {
+            "username": config.username,
+            "password": config.password,
+        }
+        domain = (config.domain or "").strip()
+        if domain:
+            credentials["domain"] = domain
+        smbclient.register_session(config.server, **credentials)
 
 
 def schedule_backup_after_change(app: FastAPI) -> None:

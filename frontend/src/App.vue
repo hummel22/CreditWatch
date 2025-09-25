@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import apiClient from './utils/apiClient'
 import BaseModal from './components/BaseModal.vue'
 import BenefitCard from './components/BenefitCard.vue'
@@ -26,6 +26,34 @@ const navItems = [
   { id: 'benefits', label: 'Benefits' },
   { id: 'admin', label: 'Admin' }
 ]
+
+const viewToPathMap = {
+  dashboard: '/',
+  benefits: '/benefits',
+  admin: '/admin'
+}
+
+function normalizePathname(pathname) {
+  if (!pathname || pathname === '/') {
+    return '/'
+  }
+  const trimmed = pathname.replace(/\/+$/, '')
+  return trimmed || '/'
+}
+
+function resolveViewFromPath(pathname) {
+  const normalizedPath = normalizePathname(pathname)
+  for (const [view, path] of Object.entries(viewToPathMap)) {
+    if (path === normalizedPath) {
+      return view
+    }
+  }
+  return 'dashboard'
+}
+
+function resolvePathFromView(view) {
+  return viewToPathMap[view] ?? '/'
+}
 
 const notificationSettings = reactive({
   id: null,
@@ -136,8 +164,41 @@ const isDashboardView = computed(() => currentView.value === 'dashboard')
 const isBenefitsView = computed(() => currentView.value === 'benefits')
 const isAdminView = computed(() => currentView.value === 'admin')
 
-function setView(view) {
-  currentView.value = view
+function updateHistoryState(view, { replace = false } = {}) {
+  if (typeof window === 'undefined') {
+    return
+  }
+  const path = resolvePathFromView(view)
+  const normalizedTargetPath = normalizePathname(path)
+  const state = { view }
+  if (replace) {
+    window.history.replaceState(state, '', normalizedTargetPath)
+    return
+  }
+  const currentPath = normalizePathname(window.location.pathname)
+  if (currentPath !== normalizedTargetPath) {
+    window.history.pushState(state, '', normalizedTargetPath)
+  }
+}
+
+function setView(view, { updateHistory = true, replace = false } = {}) {
+  const targetView = navItems.some((item) => item.id === view) ? view : 'dashboard'
+  if (currentView.value !== targetView) {
+    currentView.value = targetView
+  } else if (!replace && (!updateHistory || typeof window === 'undefined')) {
+    return
+  }
+  if (updateHistory) {
+    updateHistoryState(targetView, { replace })
+  }
+}
+
+function handlePopState(event) {
+  const viewFromState = event.state?.view
+  const view = navItems.some((item) => item.id === viewFromState)
+    ? viewFromState
+    : resolveViewFromPath(window.location.pathname)
+  setView(view, { updateHistory: false })
 }
 
 function toggleNavDrawer() {
@@ -156,6 +217,16 @@ function handleNavSelection(view) {
 watch(currentView, () => {
   error.value = ''
   navDrawerOpen.value = false
+})
+
+onMounted(() => {
+  const initialView = resolveViewFromPath(window.location.pathname)
+  setView(initialView, { replace: true })
+  window.addEventListener('popstate', handlePopState)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('popstate', handlePopState)
 })
 
 watch(

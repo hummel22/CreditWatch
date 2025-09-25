@@ -27,6 +27,52 @@ const navItems = [
   { id: 'admin', label: 'Admin' }
 ]
 
+const notificationSettings = reactive({
+  id: null,
+  base_url: '',
+  webhook_id: '',
+  default_target: '',
+  enabled: true
+})
+
+const notificationSettingsMeta = reactive({
+  created_at: null,
+  updated_at: null
+})
+
+const notificationSettingsLoading = ref(false)
+const notificationSettingsSaving = ref(false)
+const notificationSettingsLoaded = ref(false)
+const notificationSettingsError = ref('')
+const notificationSettingsSuccess = ref('')
+
+const notificationTests = reactive({
+  custom: {
+    title: '',
+    message: '',
+    target_override: ''
+  },
+  daily: {
+    target_date: new Date().toISOString().slice(0, 10),
+    target_override: ''
+  }
+})
+
+const notificationTestsLoading = reactive({
+  custom: false,
+  daily: false
+})
+
+const notificationTestErrors = reactive({
+  custom: '',
+  daily: ''
+})
+
+const notificationTestResults = reactive({
+  custom: null,
+  daily: null
+})
+
 const isDashboardView = computed(() => currentView.value === 'dashboard')
 const isBenefitsView = computed(() => currentView.value === 'benefits')
 const isAdminView = computed(() => currentView.value === 'admin')
@@ -52,6 +98,230 @@ watch(currentView, () => {
   error.value = ''
   navDrawerOpen.value = false
 })
+
+watch(
+  () => [
+    notificationSettings.base_url,
+    notificationSettings.webhook_id,
+    notificationSettings.default_target,
+    notificationSettings.enabled
+  ],
+  () => {
+    if (!notificationSettingsLoaded.value) {
+      return
+    }
+    notificationSettingsError.value = ''
+    notificationSettingsSuccess.value = ''
+  }
+)
+
+function resetNotificationSettingsState() {
+  notificationSettings.id = null
+  notificationSettings.base_url = ''
+  notificationSettings.webhook_id = ''
+  notificationSettings.default_target = ''
+  notificationSettings.enabled = true
+  notificationSettingsMeta.created_at = null
+  notificationSettingsMeta.updated_at = null
+}
+
+function applyNotificationSettings(data) {
+  if (!data || typeof data !== 'object') {
+    resetNotificationSettingsState()
+    return
+  }
+  notificationSettings.id = data.id ?? null
+  notificationSettings.base_url = data.base_url ?? ''
+  notificationSettings.webhook_id = data.webhook_id ?? ''
+  notificationSettings.default_target = data.default_target ?? ''
+  notificationSettings.enabled = data.enabled !== false
+  notificationSettingsMeta.created_at = data.created_at ?? null
+  notificationSettingsMeta.updated_at = data.updated_at ?? null
+}
+
+function clearNotificationSettingsMessages() {
+  notificationSettingsError.value = ''
+  notificationSettingsSuccess.value = ''
+}
+
+function extractErrorMessage(err, fallback) {
+  const detail = err?.response?.data?.detail
+  if (typeof detail === 'string' && detail) {
+    return detail
+  }
+  if (Array.isArray(detail) && detail.length) {
+    const [first] = detail
+    if (typeof first === 'string' && first) {
+      return first
+    }
+    if (first?.msg) {
+      return first.msg
+    }
+  }
+  if (err?.message) {
+    return err.message
+  }
+  return fallback
+}
+
+async function loadNotificationSettings() {
+  notificationSettingsLoading.value = true
+  notificationSettingsLoaded.value = false
+  notificationSettingsSuccess.value = ''
+  try {
+    const response = await apiClient.get('/api/admin/notifications/settings')
+    if (response.data) {
+      applyNotificationSettings(response.data)
+      notificationSettingsError.value = ''
+    } else {
+      resetNotificationSettingsState()
+      notificationSettingsError.value = ''
+    }
+  } catch (err) {
+    resetNotificationSettingsState()
+    notificationSettingsError.value =
+      'Unable to load notification settings. Enter new details to configure notifications.'
+  } finally {
+    notificationSettingsLoading.value = false
+    notificationSettingsLoaded.value = true
+  }
+}
+
+async function saveNotificationSettings() {
+  clearNotificationSettingsMessages()
+  const baseUrl = notificationSettings.base_url.trim()
+  const webhookId = notificationSettings.webhook_id.trim()
+  const defaultTarget = notificationSettings.default_target.trim()
+  if (!baseUrl || !webhookId) {
+    notificationSettingsError.value =
+      'Provide a Home Assistant URL and webhook ID before saving.'
+    return
+  }
+  notificationSettingsSaving.value = true
+  try {
+    const payload = {
+      base_url: baseUrl,
+      webhook_id: webhookId,
+      enabled: Boolean(notificationSettings.enabled)
+    }
+    payload.default_target = defaultTarget ? defaultTarget : null
+    const response = await apiClient.put('/api/admin/notifications/settings', payload)
+    applyNotificationSettings(response.data)
+    notificationSettingsSuccess.value = 'Notification settings saved.'
+  } catch (err) {
+    notificationSettingsError.value = extractErrorMessage(
+      err,
+      'Unable to save notification settings.'
+    )
+  } finally {
+    notificationSettingsSaving.value = false
+  }
+}
+
+function resetNotificationTestState(kind) {
+  if (!(kind in notificationTestErrors) || !(kind in notificationTestResults)) {
+    return
+  }
+  notificationTestErrors[kind] = ''
+  notificationTestResults[kind] = null
+}
+
+function resolveNotificationCategories(result) {
+  if (!result || typeof result !== 'object' || !result.categories) {
+    return []
+  }
+  return Object.entries(result.categories).filter(([, items]) =>
+    Array.isArray(items) && items.length
+  )
+}
+
+function formatNotificationCategoryLabel(key) {
+  if (!key) {
+    return ''
+  }
+  return key
+    .toString()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+function formatNotificationDate(value) {
+  if (!value) {
+    return ''
+  }
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return ''
+  }
+  return date.toLocaleDateString()
+}
+
+function formatNotificationTimestamp(value) {
+  if (!value) {
+    return ''
+  }
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return ''
+  }
+  return date.toLocaleString()
+}
+
+async function sendCustomNotificationTest() {
+  resetNotificationTestState('custom')
+  const message = notificationTests.custom.message.trim()
+  const title = notificationTests.custom.title.trim()
+  const target = notificationTests.custom.target_override.trim()
+  if (!message) {
+    notificationTestErrors.custom = 'Enter a message to send a notification.'
+    return
+  }
+  notificationTestsLoading.custom = true
+  try {
+    const payload = { message }
+    if (title) {
+      payload.title = title
+    }
+    if (target) {
+      payload.target_override = target
+    }
+    const response = await apiClient.post('/api/admin/notifications/test/custom', payload)
+    notificationTestResults.custom = response.data
+  } catch (err) {
+    notificationTestErrors.custom = extractErrorMessage(
+      err,
+      'Unable to send the custom notification.'
+    )
+  } finally {
+    notificationTestsLoading.custom = false
+  }
+}
+
+async function sendDailyNotificationTest() {
+  resetNotificationTestState('daily')
+  const targetDate = notificationTests.daily.target_date
+  const override = notificationTests.daily.target_override.trim()
+  if (!targetDate) {
+    notificationTestErrors.daily = 'Select a date to simulate for the daily notification.'
+    return
+  }
+  notificationTestsLoading.daily = true
+  try {
+    const payload = { target_date: targetDate }
+    if (override) {
+      payload.target_override = override
+    }
+    const response = await apiClient.post('/api/admin/notifications/test/daily', payload)
+    notificationTestResults.daily = response.data
+  } catch (err) {
+    notificationTestErrors.daily = extractErrorMessage(
+      err,
+      'Unable to send the daily notification test.'
+    )
+  } finally {
+    notificationTestsLoading.daily = false
+  }
+}
 
 function normaliseCard(card) {
   if (!card || typeof card !== 'object') {
@@ -1186,6 +1456,7 @@ function closeHistoryModal() {
 }
 
 onMounted(async () => {
+  await loadNotificationSettings()
   await loadFrequencies()
   await loadPreconfiguredCards()
   await loadCards()
@@ -1341,6 +1612,192 @@ onMounted(async () => {
       </template>
 
       <template v-else>
+        <section class="section-card admin-board content-constrained">
+          <div class="section-header">
+            <div>
+              <h2 class="section-title">Home Assistant notifications</h2>
+              <p class="section-description">
+                Configure the webhook connection used to deliver reminder notifications.
+              </p>
+            </div>
+          </div>
+          <div v-if="notificationSettingsLoading" class="empty-state">
+            Loading notification settings...
+          </div>
+          <template v-else>
+            <form class="admin-settings-form" @submit.prevent="saveNotificationSettings">
+              <div class="field-group">
+                <input
+                  v-model="notificationSettings.base_url"
+                  type="url"
+                  placeholder="Home Assistant URL (e.g., https://homeassistant.local:8123)"
+                  required
+                />
+                <input
+                  v-model="notificationSettings.webhook_id"
+                  type="text"
+                  placeholder="Webhook ID"
+                  required
+                />
+              </div>
+              <div class="field-group notification-field-group">
+                <input
+                  v-model="notificationSettings.default_target"
+                  type="text"
+                  placeholder="Default notification target (optional)"
+                />
+                <div class="notification-toggle">
+                  <label class="checkbox-option">
+                    <input v-model="notificationSettings.enabled" type="checkbox" />
+                    <span>Enable notifications</span>
+                  </label>
+                </div>
+              </div>
+              <div class="notification-meta">
+                <p
+                  v-if="notificationSettingsLoaded && !notificationSettings.enabled"
+                  class="helper-text warning-text"
+                >
+                  Notifications are currently disabled. Tests will still return the simulated result.
+                </p>
+                <p v-if="notificationSettingsMeta.updated_at" class="helper-text subtle-text">
+                  Last updated {{ formatNotificationTimestamp(notificationSettingsMeta.updated_at) }}
+                </p>
+              </div>
+              <div class="admin-settings-actions">
+                <div class="notification-feedback">
+                  <p v-if="notificationSettingsError" class="helper-text error-text">
+                    {{ notificationSettingsError }}
+                  </p>
+                  <p v-else-if="notificationSettingsSuccess" class="helper-text success-text">
+                    {{ notificationSettingsSuccess }}
+                  </p>
+                </div>
+                <button class="primary-button" type="submit" :disabled="notificationSettingsSaving">
+                  {{ notificationSettingsSaving ? 'Saving…' : 'Save settings' }}
+                </button>
+              </div>
+            </form>
+          </template>
+        </section>
+
+        <section class="section-card admin-board content-constrained">
+          <div class="section-header">
+            <div>
+              <h2 class="section-title">Notification tests</h2>
+              <p class="section-description">
+                Validate the integration by sending test messages with the saved settings.
+              </p>
+            </div>
+          </div>
+          <p class="helper-text subtle-text">
+            Tests run immediately using the configuration above and report whether Home Assistant accepted the payload.
+          </p>
+          <div class="notification-tests-grid">
+            <form class="notification-test-card" @submit.prevent="sendCustomNotificationTest">
+              <h3 class="notification-test-title">Send a custom message</h3>
+              <p class="helper-text">
+                Build a one-off notification payload to confirm delivery.
+              </p>
+              <input
+                v-model="notificationTests.custom.title"
+                type="text"
+                placeholder="Title (optional)"
+              />
+              <textarea
+                v-model="notificationTests.custom.message"
+                rows="3"
+                placeholder="Message body"
+                required
+              ></textarea>
+              <input
+                v-model="notificationTests.custom.target_override"
+                type="text"
+                placeholder="Target override (optional)"
+              />
+              <p v-if="notificationTestErrors.custom" class="helper-text error-text">
+                {{ notificationTestErrors.custom }}
+              </p>
+              <div
+                v-else-if="notificationTestResults.custom"
+                class="notification-result"
+                :class="notificationTestResults.custom.sent ? 'success' : 'error'"
+              >
+                <p>{{ notificationTestResults.custom.message }}</p>
+                <div
+                  v-for="[category, items] in resolveNotificationCategories(notificationTestResults.custom)"
+                  :key="category"
+                  class="notification-category"
+                >
+                  <h4>{{ formatNotificationCategoryLabel(category) }}</h4>
+                  <ul>
+                    <li
+                      v-for="item in items"
+                      :key="`${category}-${item.card_name}-${item.benefit_name}-${item.expiration_date || 'none'}`"
+                    >
+                      {{ item.benefit_name }} ({{ item.card_name }})
+                      <span v-if="item.expiration_date">
+                        – Expires {{ formatNotificationDate(item.expiration_date) }}
+                      </span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+              <div class="notification-test-actions">
+                <button class="primary-button" type="submit" :disabled="notificationTestsLoading.custom">
+                  {{ notificationTestsLoading.custom ? 'Sending…' : 'Send notification' }}
+                </button>
+              </div>
+            </form>
+
+            <form class="notification-test-card" @submit.prevent="sendDailyNotificationTest">
+              <h3 class="notification-test-title">Simulate the daily summary</h3>
+              <p class="helper-text">
+                Pretend today is a specific date and send the reminder generated for that day.
+              </p>
+              <input v-model="notificationTests.daily.target_date" type="date" required />
+              <input
+                v-model="notificationTests.daily.target_override"
+                type="text"
+                placeholder="Target override (optional)"
+              />
+              <p v-if="notificationTestErrors.daily" class="helper-text error-text">
+                {{ notificationTestErrors.daily }}
+              </p>
+              <div
+                v-else-if="notificationTestResults.daily"
+                class="notification-result"
+                :class="notificationTestResults.daily.sent ? 'success' : 'error'"
+              >
+                <p>{{ notificationTestResults.daily.message }}</p>
+                <div
+                  v-for="[category, items] in resolveNotificationCategories(notificationTestResults.daily)"
+                  :key="category"
+                  class="notification-category"
+                >
+                  <h4>{{ formatNotificationCategoryLabel(category) }}</h4>
+                  <ul>
+                    <li
+                      v-for="item in items"
+                      :key="`${category}-${item.card_name}-${item.benefit_name}-${item.expiration_date || 'none'}`"
+                    >
+                      {{ item.benefit_name }} ({{ item.card_name }})
+                      <span v-if="item.expiration_date">
+                        – Expires {{ formatNotificationDate(item.expiration_date) }}
+                      </span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+              <div class="notification-test-actions">
+                <button class="primary-button" type="submit" :disabled="notificationTestsLoading.daily">
+                  {{ notificationTestsLoading.daily ? 'Sending…' : 'Send simulated reminder' }}
+                </button>
+              </div>
+            </form>
+          </div>
+        </section>
+
         <section class="section-card admin-board content-constrained">
           <div class="section-header">
             <div>

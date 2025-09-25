@@ -82,3 +82,18 @@ class BenefitRedemption(SQLModel, table=True):
     occurred_on: date = Field(default_factory=date.today)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
+
+class NotificationSettings(SQLModel, table=True):
+    """Connection settings for the Home Assistant notification webhook."""
+
+    id: Optional[int] = Field(default=1, primary_key=True)
+    base_url: str = Field(description="Base URL for the Home Assistant instance")
+    webhook_id: str = Field(description="Webhook identifier configured in Home Assistant")
+    default_target: Optional[str] = Field(
+        default=None,
+        description="Optional default target slug understood by the Home Assistant automation",
+    )
+    enabled: bool = Field(default=True, description="Whether notifications are currently enabled")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+

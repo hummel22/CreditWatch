@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session
 
 from . import crud
-from .database import get_session, init_db
+from .database import engine, get_session, init_db
 from .models import (
     Benefit,
     BenefitFrequency,
@@ -29,6 +29,12 @@ from .schemas import (
     CreditCardCreate,
     CreditCardUpdate,
     CreditCardWithBenefits,
+    NotificationCustomMessage,
+    NotificationDailyTestRequest,
+    NotificationDispatchResult,
+    NotificationSettingsRead,
+    NotificationSettingsUpdate,
+    NotificationSettingsWrite,
     PreconfiguredCardRead,
     PreconfiguredCardWrite,
 )
@@ -38,6 +44,7 @@ from .preconfigured import (
     load_preconfigured_cards,
     update_preconfigured_card,
 )
+from .notifications import NotificationService
 
 app = FastAPI(title="CreditWatch", version="0.1.0")
 
@@ -51,8 +58,18 @@ app.add_middleware(
 
 
 @app.on_event("startup")
-def on_startup() -> None:
+async def on_startup() -> None:
     init_db()
+    service = NotificationService(engine=engine)
+    service.start()
+    app.state.notification_service = service
+
+
+@app.on_event("shutdown")
+async def on_shutdown() -> None:
+    service: NotificationService | None = getattr(app.state, "notification_service", None)
+    if service is not None:
+        await service.stop()
 
 
 @app.get("/api/health")
@@ -114,6 +131,79 @@ def admin_delete_preconfigured_card(slug: str) -> Response:
             detail="Preconfigured card not found",
         ) from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+def get_notification_service() -> NotificationService:
+    service: NotificationService | None = getattr(app.state, "notification_service", None)
+    if service is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Notification service is not ready.",
+        )
+    return service
+
+
+@app.get(
+    "/api/admin/notifications/settings",
+    response_model=Optional[NotificationSettingsRead],
+)
+def get_notification_settings(session: Session = Depends(get_session)) -> NotificationSettingsRead | None:
+    settings = crud.get_notification_settings(session)
+    return NotificationSettingsRead.model_validate(settings, from_attributes=True) if settings else None
+
+
+@app.put(
+    "/api/admin/notifications/settings",
+    response_model=NotificationSettingsRead,
+)
+def put_notification_settings(
+    payload: NotificationSettingsWrite, session: Session = Depends(get_session)
+) -> NotificationSettingsRead:
+    settings = crud.upsert_notification_settings(session, payload)
+    return NotificationSettingsRead.model_validate(settings, from_attributes=True)
+
+
+@app.patch(
+    "/api/admin/notifications/settings",
+    response_model=NotificationSettingsRead,
+)
+def patch_notification_settings(
+    payload: NotificationSettingsUpdate, session: Session = Depends(get_session)
+) -> NotificationSettingsRead:
+    try:
+        settings = crud.upsert_notification_settings(session, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return NotificationSettingsRead.model_validate(settings, from_attributes=True)
+
+
+@app.post(
+    "/api/admin/notifications/test/custom",
+    response_model=NotificationDispatchResult,
+)
+async def trigger_custom_notification(
+    payload: NotificationCustomMessage,
+    service: NotificationService = Depends(get_notification_service),
+) -> NotificationDispatchResult:
+    return await service.send_custom_message(
+        payload.message,
+        title=payload.title,
+        target_override=payload.target_override,
+    )
+
+
+@app.post(
+    "/api/admin/notifications/test/daily",
+    response_model=NotificationDispatchResult,
+)
+async def trigger_daily_notification_test(
+    payload: NotificationDailyTestRequest,
+    service: NotificationService = Depends(get_notification_service),
+) -> NotificationDispatchResult:
+    return await service.send_daily_notifications(
+        payload.target_date,
+        target_override=payload.target_override,
+    )
 
 
 @app.get("/api/cards", response_model=List[CreditCardWithBenefits])

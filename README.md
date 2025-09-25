@@ -9,6 +9,7 @@ CreditWatch is a local-first dashboard for tracking credit cards, their annual f
 - ✅ Mark benefits as used to keep a running tally of realized value versus your annual fees.
 - 📊 Gorgeous, card-based Vue 3 interface with at-a-glance progress bars for each credit card.
 - 🗂️ SQLite persistence so your data lives alongside the app when run locally or inside Docker.
+- ☁️ Automated Google Drive backups with monthly retention and one-click restore from the admin panel.
 
 ## Project layout
 
@@ -75,6 +76,17 @@ FastAPI automatically exposes interactive docs at [http://localhost:8010/docs](h
 2. Select a card and add benefits such as travel credits or dining offers, including their value and reset cadence.
 3. When you use a benefit, hit **Mark used**—the dashboard will adjust the utilized total and net position.
 4. Review the progress bars to see which cards are paying for themselves and which still need attention.
+
+### Google Drive backups
+
+The **Admin → Database backups** panel lets you automatically copy the SQLite database to Google Drive and restore it later.
+
+1. Create a Google Cloud service account with Drive API access and grant it access to the folder that should store backups.
+2. Paste the folder ID and the JSON credentials into the backup form, then save the configuration.
+3. CreditWatch will schedule a backup for one hour after the most recent data change. Each month is stored as a single
+   `creditwatch-backup-YYYY-MM.db` file—new backups overwrite the current month while preserving previous months.
+4. Use **Run backup now** for an immediate snapshot or upload a `.db` archive to replace the live database. The app
+   automatically reloads data and schedules a fresh backup after an import.
 
 ## Development tips
 

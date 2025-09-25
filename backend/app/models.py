@@ -101,3 +101,26 @@ class NotificationSettings(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
+
+class BackupSettings(SQLModel, table=True):
+    """Configuration for automated SMB database backups."""
+
+    id: Optional[int] = Field(default=1, primary_key=True)
+    server: str = Field(description="Hostname or IP address of the SMB server")
+    share: str = Field(description="Share name that will store database backups")
+    directory: str = Field(
+        default="",
+        description="Optional subdirectory within the share for database backups",
+    )
+    username: str = Field(description="SMB account used to authenticate")
+    password: str = Field(description="SMB account password")
+    domain: Optional[str] = Field(
+        default=None,
+        description="Optional domain or workgroup for authentication",
+    )
+    last_backup_at: Optional[datetime] = None
+    last_backup_filename: Optional[str] = None
+    last_backup_error: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+

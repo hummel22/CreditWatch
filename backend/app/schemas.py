@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence
 
-from pydantic import ConfigDict, model_validator
+from pydantic import ConfigDict, field_validator, model_validator
 from sqlmodel import Field, SQLModel
 
 from .models import BenefitFrequency, BenefitType, YearTrackingMode
@@ -185,6 +185,75 @@ class CreditCardWithBenefits(CreditCardRead):
     net_position: float
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class NotificationSettingsBase(SQLModel):
+    base_url: str
+    webhook_id: str
+    default_target: Optional[str] = None
+    enabled: bool = True
+
+    @field_validator("base_url")
+    @classmethod
+    def normalise_base_url(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("A Home Assistant URL is required.")
+        if not cleaned.startswith("http://") and not cleaned.startswith("https://"):
+            raise ValueError("The Home Assistant URL must start with http:// or https://.")
+        return cleaned.rstrip("/")
+
+
+class NotificationSettingsRead(NotificationSettingsBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NotificationSettingsWrite(NotificationSettingsBase):
+    pass
+
+
+class NotificationSettingsUpdate(SQLModel):
+    base_url: Optional[str] = None
+    webhook_id: Optional[str] = None
+    default_target: Optional[str] = None
+    enabled: Optional[bool] = None
+
+    @field_validator("base_url")
+    @classmethod
+    def validate_base_url(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned.startswith("http://") and not cleaned.startswith("https://"):
+            raise ValueError("The Home Assistant URL must start with http:// or https://.")
+        return cleaned.rstrip("/")
+
+
+class NotificationCustomMessage(SQLModel):
+    message: str
+    title: Optional[str] = None
+    target_override: Optional[str] = None
+
+
+class NotificationDailyTestRequest(SQLModel):
+    target_date: date
+    target_override: Optional[str] = None
+
+
+class NotificationBenefitSummary(SQLModel):
+    card_name: str
+    benefit_name: str
+    expiration_date: date
+
+
+class NotificationDispatchResult(SQLModel):
+    sent: bool
+    message: Optional[str] = None
+    categories: Dict[str, List[NotificationBenefitSummary]] = Field(default_factory=dict)
 
 
 class PreconfiguredBenefitBase(SQLModel):

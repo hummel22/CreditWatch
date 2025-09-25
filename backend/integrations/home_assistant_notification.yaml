@@ -1,0 +1,44 @@
+# CreditWatch Home Assistant Webhook Automation
+#
+# Import this file into Home Assistant (Settings → Automations & Scenes → Import blueprint)
+# to create an automation that listens for webhook calls from the CreditWatch backend.
+# Update the ``default_target`` dictionary with the notification services that correspond
+# to your devices. The backend will send a ``target`` slug that maps to one of these keys.
+#
+# Example: if your mobile device is exposed as ``notify.mobile_app_janes_iphone`` and you
+# want it to be the default target, configure the backend with ``default_target: primary``
+# and set ``primary: notify.mobile_app_janes_iphone`` below.
+blueprint:
+  name: CreditWatch notification webhook
+  description: Handle CreditWatch reminder notifications via a webhook
+  domain: automation
+  source_url: https://example.com/creditwatch/home-assistant-webhook
+  input: {}
+
+trigger:
+  - platform: webhook
+    allowed_methods:
+      - POST
+    local_only: false
+    webhook_id: !secret creditwatch_webhook_id
+
+variables:
+  payload: "{{ trigger.json | default({}) }}"
+  target_slug: "{{ payload.target | default('default') }}"
+  default_target: notify.mobile_app_example_device
+  target_map:
+    default: "{{ default_target }}"
+    # primary: notify.mobile_app_primary_phone
+    # tablet: notify.mobile_app_kitchen_tablet
+  notify_service: "{{ target_map.get(target_slug, default_target) }}"
+
+condition: []
+
+action:
+  - service: "{{ notify_service }}"
+    data:
+      title: "{{ payload.title | default('CreditWatch notification') }}"
+      message: "{{ payload.message | default('') }}"
+      data: "{{ payload.data | default({}) }}"
+
+mode: single

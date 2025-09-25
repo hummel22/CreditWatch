@@ -6,7 +6,14 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from .models import Benefit, BenefitFrequency, BenefitRedemption, BenefitType, CreditCard
+from .models import (
+    Benefit,
+    BenefitFrequency,
+    BenefitRedemption,
+    BenefitType,
+    CreditCard,
+    NotificationSettings,
+)
 from .schemas import (
     BenefitCreate,
     BenefitRedemptionCreate,
@@ -15,6 +22,8 @@ from .schemas import (
     BenefitUsageUpdate,
     CreditCardCreate,
     CreditCardUpdate,
+    NotificationSettingsUpdate,
+    NotificationSettingsWrite,
 )
 from .schemas import normalise_window_values
 
@@ -174,6 +183,37 @@ def delete_benefit_redemption(session: Session, redemption: BenefitRedemption) -
     session.delete(redemption)
     session.commit()
     sync_incremental_usage_status(session, benefit_id)
+
+
+def get_notification_settings(session: Session) -> NotificationSettings | None:
+    statement = select(NotificationSettings).limit(1)
+    return session.exec(statement).first()
+
+
+def upsert_notification_settings(
+    session: Session, payload: NotificationSettingsWrite | NotificationSettingsUpdate
+) -> NotificationSettings:
+    data = payload.model_dump(exclude_unset=True)
+    settings = get_notification_settings(session)
+    now = datetime.utcnow()
+    if settings is None:
+        if not isinstance(payload, NotificationSettingsWrite):
+            missing = {key for key in ("base_url", "webhook_id") if key not in data}
+            if missing:
+                raise ValueError(
+                    "Missing required fields to create notification settings: "
+                    + ", ".join(sorted(missing))
+                )
+        settings = NotificationSettings(**data)
+        settings.created_at = now
+    else:
+        for key, value in data.items():
+            setattr(settings, key, value)
+    settings.updated_at = now
+    session.add(settings)
+    session.commit()
+    session.refresh(settings)
+    return settings
 
 
 def list_benefit_redemptions(session: Session, benefit_id: int) -> List[BenefitRedemption]:

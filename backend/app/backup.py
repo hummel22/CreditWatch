@@ -170,7 +170,7 @@ class BackupService:
         remote_base, remote_dir, _ = self._resolve_remote_paths(config)
         remote_path = f"{remote_dir}/{filename}"
         self._register_session(config)
-        smbclient.mkdirs(remote_dir, exist_ok=True)
+        smbclient.makedirs(remote_dir, exist_ok=True)
         with smbclient.open_file(remote_path, mode="wb", buffering=0) as remote_file:
             with source.open("rb") as local_file:
                 while True:

@@ -6,9 +6,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from .google_drive import extract_service_account_email
 from .models import (
-    BackupSettings,
     Benefit,
     BenefitFrequency,
     BenefitRedemption,
@@ -17,8 +15,6 @@ from .models import (
     NotificationSettings,
 )
 from .schemas import (
-    BackupSettingsUpdate,
-    BackupSettingsWrite,
     BenefitCreate,
     BenefitRedemptionCreate,
     BenefitRedemptionUpdate,
@@ -214,52 +210,6 @@ def upsert_notification_settings(
         for key, value in data.items():
             setattr(settings, key, value)
     settings.updated_at = now
-    session.add(settings)
-    session.commit()
-    session.refresh(settings)
-    return settings
-
-
-def get_backup_settings(session: Session) -> BackupSettings | None:
-    statement = select(BackupSettings).limit(1)
-    return session.exec(statement).first()
-
-
-def upsert_backup_settings(
-    session: Session, payload: BackupSettingsWrite | BackupSettingsUpdate
-) -> BackupSettings:
-    data = payload.model_dump(exclude_unset=True)
-    settings = get_backup_settings(session)
-    now = datetime.utcnow()
-
-    if settings is None:
-        if not isinstance(payload, BackupSettingsWrite):
-            raise ValueError("Backup settings have not been configured yet.")
-        email = extract_service_account_email(data["service_account_json"])
-        settings = BackupSettings(
-            drive_folder_id=data["drive_folder_id"],
-            service_account_json=data["service_account_json"],
-            service_account_email=email,
-            created_at=now,
-            updated_at=now,
-        )
-    else:
-        if "drive_folder_id" in data:
-            settings.drive_folder_id = data["drive_folder_id"]
-        if "service_account_json" in data:
-            settings.service_account_json = data["service_account_json"]
-            settings.service_account_email = extract_service_account_email(
-                settings.service_account_json
-            )
-        settings.updated_at = now
-
-    session.add(settings)
-    session.commit()
-    session.refresh(settings)
-    return settings
-
-
-def save_backup_settings(session: Session, settings: BackupSettings) -> BackupSettings:
     session.add(settings)
     session.commit()
     session.refresh(settings)

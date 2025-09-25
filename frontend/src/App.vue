@@ -73,45 +73,9 @@ const notificationTestResults = reactive({
   daily: null
 })
 
-const backupSettings = reactive({
-  drive_folder_id: '',
-  service_account_email: '',
-  is_configured: false,
-  last_backup_at: null,
-  last_backup_filename: '',
-  last_backup_size: null,
-  last_backup_error: '',
-  next_backup_at: null,
-  last_result_at: null,
-  last_result_message: '',
-  last_result_success: null
-})
-
-const backupForm = reactive({
-  drive_folder_id: '',
-  service_account_json: ''
-})
-
-const backupState = reactive({
-  loading: false,
-  saving: false,
-  running: false,
-  importing: false,
-  error: '',
-  success: '',
-  runMessage: '',
-  runSuccess: null,
-  importError: '',
-  importSuccess: ''
-})
-
-const backupImportFile = ref(null)
-const backupFileInput = ref(null)
-
 const isDashboardView = computed(() => currentView.value === 'dashboard')
 const isBenefitsView = computed(() => currentView.value === 'benefits')
 const isAdminView = computed(() => currentView.value === 'admin')
-const isBackupConfigured = computed(() => backupSettings.is_configured)
 
 function setView(view) {
   currentView.value = view
@@ -148,16 +112,6 @@ watch(
     }
     notificationSettingsError.value = ''
     notificationSettingsSuccess.value = ''
-  }
-)
-
-watch(
-  () => [backupForm.drive_folder_id, backupForm.service_account_json],
-  () => {
-    if (!backupState.loading) {
-      backupState.error = ''
-      backupState.success = ''
-    }
   }
 )
 
@@ -210,64 +164,6 @@ function extractErrorMessage(err, fallback) {
   return fallback
 }
 
-function resetBackupSettings() {
-  backupSettings.drive_folder_id = ''
-  backupSettings.service_account_email = ''
-  backupSettings.is_configured = false
-  backupSettings.last_backup_at = null
-  backupSettings.last_backup_filename = ''
-  backupSettings.last_backup_size = null
-  backupSettings.last_backup_error = ''
-  backupSettings.next_backup_at = null
-  backupSettings.last_result_at = null
-  backupSettings.last_result_message = ''
-  backupSettings.last_result_success = null
-  backupForm.drive_folder_id = ''
-}
-
-function applyBackupSettings(data) {
-  if (!data || typeof data !== 'object') {
-    resetBackupSettings()
-    return
-  }
-  backupSettings.drive_folder_id = data.drive_folder_id ?? ''
-  backupSettings.service_account_email = data.service_account_email ?? ''
-  backupSettings.is_configured = data.is_configured === true
-  backupSettings.last_backup_at = data.last_backup_at ?? null
-  backupSettings.last_backup_filename = data.last_backup_filename ?? ''
-  backupSettings.last_backup_size =
-    typeof data.last_backup_size === 'number' ? data.last_backup_size : null
-  backupSettings.last_backup_error = data.last_backup_error ?? ''
-  backupSettings.next_backup_at = data.next_backup_at ?? null
-  backupSettings.last_result_at = data.last_result_at ?? null
-  backupSettings.last_result_message = data.last_result_message ?? ''
-  if (data.last_result_success === true) {
-    backupSettings.last_result_success = true
-  } else if (data.last_result_success === false) {
-    backupSettings.last_result_success = false
-  } else {
-    backupSettings.last_result_success = null
-  }
-  backupForm.drive_folder_id = backupSettings.drive_folder_id
-}
-
-function formatBackupSize(bytes) {
-  if (!Number.isFinite(bytes) || bytes < 0) {
-    return ''
-  }
-  if (bytes < 1024) {
-    return `${bytes} B`
-  }
-  const units = ['KB', 'MB', 'GB']
-  let size = bytes / 1024
-  let unitIndex = 0
-  while (size >= 1024 && unitIndex < units.length - 1) {
-    size /= 1024
-    unitIndex += 1
-  }
-  return `${size.toFixed(1)} ${units[unitIndex]}`
-}
-
 async function loadNotificationSettings() {
   notificationSettingsLoading.value = true
   notificationSettingsLoaded.value = false
@@ -288,20 +184,6 @@ async function loadNotificationSettings() {
   } finally {
     notificationSettingsLoading.value = false
     notificationSettingsLoaded.value = true
-  }
-}
-
-async function loadBackupSettings() {
-  backupState.loading = true
-  backupState.error = ''
-  try {
-    const response = await apiClient.get('/api/admin/backups/settings')
-    applyBackupSettings(response.data)
-  } catch (err) {
-    resetBackupSettings()
-    backupState.error = extractErrorMessage(err, 'Unable to load backup settings.')
-  } finally {
-    backupState.loading = false
   }
 }
 
@@ -333,105 +215,6 @@ async function saveNotificationSettings() {
     )
   } finally {
     notificationSettingsSaving.value = false
-  }
-}
-
-async function saveBackupSettings() {
-  backupState.error = ''
-  backupState.success = ''
-  const folderId = backupForm.drive_folder_id.trim()
-  const credentials = backupForm.service_account_json.trim()
-  if (!folderId) {
-    backupState.error = 'Provide the Google Drive folder ID before saving.'
-    return
-  }
-  if (!isBackupConfigured.value && !credentials) {
-    backupState.error = 'Paste the service account JSON credentials to configure backups.'
-    return
-  }
-  const payload = { drive_folder_id: folderId }
-  let method = 'patch'
-  if (!isBackupConfigured.value) {
-    payload.service_account_json = credentials
-    method = 'put'
-  } else if (credentials) {
-    payload.service_account_json = credentials
-  }
-  backupState.saving = true
-  try {
-    const response =
-      method === 'put'
-        ? await apiClient.put('/api/admin/backups/settings', payload)
-        : await apiClient.patch('/api/admin/backups/settings', payload)
-    applyBackupSettings(response.data)
-    backupForm.service_account_json = ''
-    backupState.success = 'Backup settings saved.'
-  } catch (err) {
-    backupState.error = extractErrorMessage(err, 'Unable to save backup settings.')
-  } finally {
-    backupState.saving = false
-  }
-}
-
-async function runBackupNow() {
-  backupState.runMessage = ''
-  backupState.runSuccess = null
-  backupState.error = ''
-  if (!isBackupConfigured.value) {
-    backupState.error = 'Configure Google Drive backups before running a backup.'
-    return
-  }
-  backupState.running = true
-  try {
-    const response = await apiClient.post('/api/admin/backups/run')
-    const data = response.data || {}
-    backupState.runMessage = data.message || 'Backup task completed.'
-    backupState.runSuccess = data.success !== false
-    await loadBackupSettings()
-  } catch (err) {
-    backupState.runMessage = extractErrorMessage(err, 'Unable to run the backup now.')
-    backupState.runSuccess = false
-  } finally {
-    backupState.running = false
-  }
-}
-
-function handleBackupFileChange(event) {
-  const fileList = event?.target?.files || []
-  backupImportFile.value = fileList.length ? fileList[0] : null
-  backupState.importError = ''
-  backupState.importSuccess = ''
-}
-
-async function importBackupDatabase() {
-  backupState.importError = ''
-  backupState.importSuccess = ''
-  if (!backupImportFile.value) {
-    backupState.importError = 'Select a .db file to import.'
-    return
-  }
-  const formData = new FormData()
-  formData.append('file', backupImportFile.value)
-  backupState.importing = true
-  try {
-    await apiClient.post('/api/admin/backups/import', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    })
-    backupState.importSuccess = 'Database imported successfully.'
-    backupImportFile.value = null
-    if (backupFileInput.value) {
-      backupFileInput.value.value = ''
-    }
-    await Promise.all([
-      loadCards(),
-      loadPreconfiguredCards(),
-      loadNotificationSettings(),
-      loadBackupSettings()
-    ])
-  } catch (err) {
-    backupState.importError = extractErrorMessage(err, 'Unable to import the database file.')
-  } finally {
-    backupState.importing = false
   }
 }
 
@@ -1684,7 +1467,6 @@ function closeHistoryModal() {
 }
 
 onMounted(async () => {
-  await loadBackupSettings()
   await loadNotificationSettings()
   await loadFrequencies()
   await loadPreconfiguredCards()
@@ -1841,150 +1623,6 @@ onMounted(async () => {
       </template>
 
       <template v-else>
-        <section class="section-card admin-board content-constrained">
-          <div class="section-header">
-            <div>
-              <h2 class="section-title">Database backups</h2>
-              <p class="section-description">
-                Configure automatic Google Drive backups and restore from an archived database file.
-              </p>
-            </div>
-          </div>
-          <div v-if="backupState.loading" class="empty-state">Loading backup settings...</div>
-          <template v-else>
-            <form class="admin-settings-form backup-settings-form" @submit.prevent="saveBackupSettings">
-              <div class="field-group">
-                <input
-                  v-model="backupForm.drive_folder_id"
-                  type="text"
-                  placeholder="Google Drive folder ID"
-                  required
-                />
-              </div>
-              <textarea
-                v-model="backupForm.service_account_json"
-                rows="4"
-                placeholder="Service account JSON (paste to set or rotate credentials)"
-              ></textarea>
-              <p class="helper-text subtle-text">
-                Use a service account with access to the destination folder. Backups run one hour after the most recent change.
-              </p>
-              <div class="backup-settings-feedback">
-                <p v-if="backupState.error" class="helper-text error-text">{{ backupState.error }}</p>
-                <p v-else-if="backupState.success" class="helper-text success-text">{{ backupState.success }}</p>
-              </div>
-              <div class="backup-settings-actions">
-                <button class="primary-button" type="submit" :disabled="backupState.saving">
-                  {{ backupState.saving ? 'Saving…' : 'Save backup settings' }}
-                </button>
-              </div>
-            </form>
-
-            <div class="backup-status-grid">
-              <div class="backup-status-card">
-                <h3 class="backup-status-title">Configuration</h3>
-                <p class="backup-status-line">
-                  Status
-                  <span class="tag" :class="isBackupConfigured ? 'success' : 'warning'">
-                    {{ isBackupConfigured ? 'Configured' : 'Not configured' }}
-                  </span>
-                </p>
-                <p class="backup-status-line">
-                  Service account ·
-                  <span class="backup-status-value">
-                    {{ backupSettings.service_account_email || 'Not set' }}
-                  </span>
-                </p>
-              </div>
-              <div class="backup-status-card">
-                <h3 class="backup-status-title">Schedule</h3>
-                <p v-if="backupSettings.next_backup_at" class="backup-status-line">
-                  Next backup {{ formatNotificationTimestamp(backupSettings.next_backup_at) }}
-                </p>
-                <p v-else-if="isBackupConfigured" class="backup-status-line subtle-text">
-                  Waiting for recent changes before scheduling.
-                </p>
-                <p v-else class="backup-status-line subtle-text">
-                  Configure backups to enable scheduling.
-                </p>
-              </div>
-              <div class="backup-status-card">
-                <h3 class="backup-status-title">Last backup</h3>
-                <p v-if="backupSettings.last_backup_at" class="backup-status-line">
-                  Saved {{ formatNotificationTimestamp(backupSettings.last_backup_at) }}
-                </p>
-                <p v-else class="backup-status-line subtle-text">No backups have been created yet.</p>
-                <p v-if="backupSettings.last_backup_filename" class="backup-status-line">
-                  File · <span class="backup-status-value">{{ backupSettings.last_backup_filename }}</span>
-                </p>
-                <p v-if="backupSettings.last_backup_size !== null" class="backup-status-line">
-                  Size · <span class="backup-status-value">{{ formatBackupSize(backupSettings.last_backup_size) }}</span>
-                </p>
-                <p v-if="backupSettings.last_backup_error" class="helper-text error-text">
-                  {{ backupSettings.last_backup_error }}
-                </p>
-              </div>
-              <div class="backup-status-card">
-                <h3 class="backup-status-title">Recent run</h3>
-                <p v-if="backupSettings.last_result_at" class="backup-status-line">
-                  {{ backupSettings.last_result_success === false ? 'Failed' : 'Completed' }}
-                  {{ formatNotificationTimestamp(backupSettings.last_result_at) }}
-                </p>
-                <p v-if="backupSettings.last_result_message" class="backup-status-line">
-                  {{ backupSettings.last_result_message }}
-                </p>
-                <p v-else class="backup-status-line subtle-text">No backup activity yet.</p>
-              </div>
-            </div>
-
-            <div class="backup-actions-row">
-              <button
-                class="primary-button secondary"
-                type="button"
-                :disabled="backupState.running || !isBackupConfigured"
-                @click="runBackupNow"
-              >
-                {{ backupState.running ? 'Running…' : 'Run backup now' }}
-              </button>
-              <p
-                v-if="backupState.runMessage"
-                :class="['helper-text', backupState.runSuccess === false ? 'error-text' : 'success-text']"
-              >
-                {{ backupState.runMessage }}
-              </p>
-            </div>
-
-            <div class="backup-import-card">
-              <h3 class="backup-import-title">Import database</h3>
-              <p class="helper-text subtle-text">
-                Upload a SQLite <code>.db</code> file to replace the current database. A backup will be scheduled automatically after import.
-              </p>
-              <div class="backup-import-controls">
-                <input
-                  ref="backupFileInput"
-                  type="file"
-                  accept=".db"
-                  @change="handleBackupFileChange"
-                />
-                <button
-                  class="primary-button secondary"
-                  type="button"
-                  :disabled="backupState.importing"
-                  @click="importBackupDatabase"
-                >
-                  {{ backupState.importing ? 'Importing…' : 'Import database' }}
-                </button>
-              </div>
-              <p v-if="backupState.importError" class="helper-text error-text">
-                {{ backupState.importError }}
-              </p>
-              <p v-else-if="backupState.importSuccess" class="helper-text success-text">
-                {{ backupState.importSuccess }}
-              </p>
-            </div>
-          </template>
-        </section>
-
         <section class="section-card admin-board content-constrained">
           <div class="section-header">
             <div>

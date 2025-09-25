@@ -101,28 +101,3 @@ class NotificationSettings(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
-
-class BackupSettings(SQLModel, table=True):
-    """Configuration required to upload database backups to Google Drive."""
-
-    id: Optional[int] = Field(default=1, primary_key=True)
-    drive_folder_id: str = Field(description="Target Google Drive folder identifier")
-    service_account_json: str = Field(
-        description="Raw JSON credentials for the Google service account",
-    )
-    service_account_email: Optional[str] = Field(
-        default=None,
-        description="Derived service account email for display purposes",
-    )
-    last_backup_at: Optional[datetime] = Field(default=None)
-    last_backup_file_id: Optional[str] = Field(default=None)
-    last_backup_filename: Optional[str] = Field(default=None)
-    last_backup_size: Optional[int] = Field(default=None, ge=0)
-    last_backup_error: Optional[str] = Field(default=None)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-
-    @property
-    def is_configured(self) -> bool:
-        return bool(self.drive_folder_id and self.service_account_json)
-

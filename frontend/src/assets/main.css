@@ -356,6 +356,128 @@ textarea {
   gap: 0.6rem;
 }
 
+.admin-settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.notification-field-group {
+  align-items: center;
+}
+
+.notification-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0.35rem 0;
+}
+
+.notification-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: -0.25rem;
+}
+
+.admin-settings-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.notification-feedback {
+  flex: 1;
+  min-width: 220px;
+}
+
+.notification-feedback .helper-text {
+  margin: 0;
+}
+
+.notification-tests-grid {
+  display: grid;
+  gap: 1.5rem;
+  margin-top: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.notification-test-card {
+  border: 1px solid rgba(226, 232, 240, 0.7);
+  border-radius: 16px;
+  background: rgba(248, 250, 252, 0.85);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.notification-test-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.notification-test-card .helper-text {
+  margin: 0;
+}
+
+.notification-test-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.5rem;
+}
+
+.notification-result {
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  padding: 0.75rem;
+  background: rgba(241, 245, 249, 0.5);
+  color: #334155;
+  font-size: 0.85rem;
+}
+
+.notification-result.success {
+  border-color: rgba(34, 197, 94, 0.45);
+  background: rgba(187, 247, 208, 0.35);
+  color: #065f46;
+}
+
+.notification-result.error {
+  border-color: rgba(248, 113, 113, 0.45);
+  background: rgba(254, 226, 226, 0.45);
+  color: #b91c1c;
+}
+
+.notification-category {
+  margin-top: 0.6rem;
+}
+
+.notification-category h4 {
+  margin: 0 0 0.25rem;
+  font-size: 0.85rem;
+  color: #0f172a;
+}
+
+.notification-category ul {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: #475569;
+  font-size: 0.85rem;
+}
+
+.notification-category li {
+  margin-bottom: 0.25rem;
+}
+
+.notification-category li:last-child {
+  margin-bottom: 0;
+}
+
 .admin-benefit-values {
   align-items: center;
 }
@@ -577,6 +699,22 @@ textarea {
   margin: 0.5rem 0 1rem;
   font-size: 0.85rem;
   color: #475569;
+}
+
+.helper-text.error-text {
+  color: #dc2626;
+}
+
+.helper-text.success-text {
+  color: #059669;
+}
+
+.helper-text.warning-text {
+  color: #d97706;
+}
+
+.helper-text.subtle-text {
+  color: #64748b;
 }
 
 .history-table {

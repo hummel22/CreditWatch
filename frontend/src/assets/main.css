@@ -356,6 +356,16 @@ textarea {
   gap: 0.6rem;
 }
 
+.admin-benefit-card__footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.25rem;
+}
+
+.admin-benefit-card__remove {
+  margin-left: auto;
+}
+
 .admin-settings-form {
   display: flex;
   flex-direction: column;

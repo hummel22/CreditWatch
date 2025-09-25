@@ -863,15 +863,20 @@ function closeCardModal() {
 }
 
 async function handleCreateCard() {
-  if (!newCard.card_name || !newCard.company_name || newCard.last_four.length !== 4) {
-    error.value = 'Please provide a card name, company, and the last four digits.'
+  const trimmedLastDigits = newCard.last_four.trim()
+  if (
+    !newCard.card_name ||
+    !newCard.company_name ||
+    !/^\d{4,5}$/.test(trimmedLastDigits)
+  ) {
+    error.value = 'Please provide a card name, company, and the last four or five digits.'
     return
   }
   try {
     const payload = {
       card_name: newCard.card_name,
       company_name: newCard.company_name,
-      last_four: newCard.last_four,
+      last_four: trimmedLastDigits,
       account_name: newCard.account_name,
       annual_fee: Number(newCard.annual_fee || 0),
       fee_due_date: newCard.fee_due_date,
@@ -912,6 +917,7 @@ async function handleCreateCard() {
     } else {
       cards.value.push(createdCard)
     }
+    newCard.last_four = trimmedLastDigits
     closeCardModal()
     error.value = ''
   } catch (err) {
@@ -1136,11 +1142,16 @@ async function submitEditCard() {
   if (!editCardModal.cardId) {
     return
   }
+  const trimmedLastDigits = editCardModal.form.last_four.trim()
+  if (!/^\d{4,5}$/.test(trimmedLastDigits)) {
+    error.value = 'Please provide the last four or five digits.'
+    return
+  }
   try {
     const payload = {
       card_name: editCardModal.form.card_name,
       company_name: editCardModal.form.company_name,
-      last_four: editCardModal.form.last_four,
+      last_four: trimmedLastDigits,
       account_name: editCardModal.form.account_name,
       annual_fee: Number(editCardModal.form.annual_fee || 0),
       fee_due_date: editCardModal.form.fee_due_date,
@@ -1905,9 +1916,10 @@ onMounted(async () => {
         <input
           v-model="newCard.last_four"
           type="text"
-          maxlength="4"
+          inputmode="numeric"
+          maxlength="5"
           minlength="4"
-          placeholder="Last four digits"
+          placeholder="Last four or five digits"
           required
         />
         <input v-model="newCard.account_name" type="text" placeholder="Account name" required />
@@ -1948,9 +1960,10 @@ onMounted(async () => {
         <input
           v-model="editCardModal.form.last_four"
           type="text"
-          maxlength="4"
+          inputmode="numeric"
+          maxlength="5"
           minlength="4"
-          placeholder="Last four digits"
+          placeholder="Last four or five digits"
           required
         />
         <input v-model="editCardModal.form.account_name" type="text" placeholder="Account name" required />

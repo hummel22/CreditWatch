@@ -42,7 +42,11 @@ class CreditCard(SQLModel, table=True):
         index=True,
         description="Card issuer or bank name",
     )
-    last_four: str = Field(min_length=4, max_length=4, description="Last four digits")
+    last_four: str = Field(
+        min_length=4,
+        max_length=5,
+        description="Last four or five digits",
+    )
     account_name: str = Field(index=True, description="Account holder or user account identifier")
     annual_fee: float = Field(ge=0)
     fee_due_date: date

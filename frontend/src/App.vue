@@ -705,8 +705,12 @@ function resolveDefaultFrequency() {
   return frequencies.value[0] || 'monthly'
 }
 
-function createAdminBenefit() {
+let adminBenefitIdCounter = 0
+
+function createAdminBenefit(overrides = {}) {
+  adminBenefitIdCounter += 1
   return {
+    id: `admin-benefit-${adminBenefitIdCounter}`,
     name: '',
     description: '',
     frequency: resolveDefaultFrequency(),
@@ -714,7 +718,8 @@ function createAdminBenefit() {
     value: '',
     expected_value: '',
     useCustomValues: false,
-    window_values: []
+    window_values: [],
+    ...overrides
   }
 }
 
@@ -1082,27 +1087,29 @@ function openAdminEditModal(card) {
   adminModal.form.card_type = card.card_type
   adminModal.form.company_name = card.company_name
   adminModal.form.annual_fee = card.annual_fee.toString()
-  adminModal.form.benefits = card.benefits.map((benefit) => ({
-    name: benefit.name,
-    description: benefit.description || '',
-    frequency: benefit.frequency,
-    type: benefit.type,
-    value:
-      benefit.type === 'cumulative'
-        ? ''
-        : benefit.value != null
-          ? benefit.value.toString()
+  adminModal.form.benefits = card.benefits.map((benefit) =>
+    createAdminBenefit({
+      name: benefit.name,
+      description: benefit.description || '',
+      frequency: benefit.frequency,
+      type: benefit.type,
+      value:
+        benefit.type === 'cumulative'
+          ? ''
+          : benefit.value != null
+            ? benefit.value.toString()
+            : '',
+      expected_value:
+        benefit.type === 'cumulative' && benefit.expected_value != null
+          ? benefit.expected_value.toString()
           : '',
-    expected_value:
-      benefit.type === 'cumulative' && benefit.expected_value != null
-        ? benefit.expected_value.toString()
-        : '',
-    useCustomValues:
-      Array.isArray(benefit.window_values) && benefit.window_values.length > 0,
-    window_values: Array.isArray(benefit.window_values)
-      ? benefit.window_values.map((value) => value.toString())
-      : []
-  }))
+      useCustomValues:
+        Array.isArray(benefit.window_values) && benefit.window_values.length > 0,
+      window_values: Array.isArray(benefit.window_values)
+        ? benefit.window_values.map((value) => value.toString())
+        : []
+    })
+  )
   if (!adminModal.form.benefits.length) {
     adminModal.form.benefits.push(createAdminBenefit())
   }
@@ -1123,7 +1130,11 @@ function addAdminBenefit() {
   adminModal.form.benefits.push(createAdminBenefit())
 }
 
-function removeAdminBenefit(index) {
+function removeAdminBenefit(benefitId) {
+  const index = adminModal.form.benefits.findIndex((benefit) => benefit.id === benefitId)
+  if (index === -1) {
+    return
+  }
   adminModal.form.benefits.splice(index, 1)
   if (!adminModal.form.benefits.length) {
     adminModal.form.benefits.push(createAdminBenefit())
@@ -2784,11 +2795,7 @@ onMounted(async () => {
         />
       </div>
       <div class="admin-benefit-editor">
-        <div
-          v-for="(benefit, index) in adminModal.form.benefits"
-          :key="`admin-benefit-${index}`"
-          class="admin-benefit-card"
-        >
+        <div v-for="benefit in adminModal.form.benefits" :key="benefit.id" class="admin-benefit-card">
           <div class="field-group">
             <input v-model="benefit.name" type="text" placeholder="Benefit name" required />
             <select v-model="benefit.type" @change="handleAdminBenefitTypeChange(benefit)">
@@ -2829,19 +2836,6 @@ onMounted(async () => {
               step="0.01"
               placeholder="Expected value (optional)"
             />
-            <button
-              class="icon-button ghost"
-              type="button"
-              title="Remove benefit"
-              @click="removeAdminBenefit(index)"
-            >
-              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path
-                  d="M5.5 5.5a.75.75 0 0 1 1.06 0L10 8.94l3.44-3.44a.75.75 0 1 1 1.06 1.06L11.06 10l3.44 3.44a.75.75 0 0 1-1.06 1.06L10 11.06l-3.44 3.44a.75.75 0 0 1-1.06-1.06L8.94 10 5.5 6.56a.75.75 0 0 1 0-1.06z"
-                />
-              </svg>
-              <span class="sr-only">Remove benefit</span>
-            </button>
           </div>
           <div
             v-if="benefit.type !== 'cumulative' && supportsCustomWindowValues(benefit.frequency)"
@@ -2881,6 +2875,21 @@ onMounted(async () => {
             </label>
           </div>
           <p class="helper-text">{{ benefitTypeDescriptions[benefit.type] }}</p>
+          <div class="admin-benefit-card__footer">
+            <button
+              class="icon-button danger admin-benefit-card__remove"
+              type="button"
+              title="Remove benefit"
+              @click="removeAdminBenefit(benefit.id)"
+            >
+              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path
+                  d="M5.5 5.5a.75.75 0 0 1 1.06 0L10 8.94l3.44-3.44a.75.75 0 1 1 1.06 1.06L11.06 10l3.44 3.44a.75.75 0 0 1-1.06 1.06L10 11.06l-3.44 3.44a.75.75 0 0 1-1.06-1.06L8.94 10 5.5 6.56a.75.75 0 0 1 0-1.06z"
+                />
+              </svg>
+              <span class="sr-only">Remove benefit</span>
+            </button>
+          </div>
         </div>
         <button class="link-button inline" type="button" @click="addAdminBenefit">
           Add another benefit

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import calendar
 from datetime import date, datetime
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -15,6 +16,7 @@ from .models import (
     CreditCard,
     NotificationLog,
     NotificationSettings,
+    YearTrackingMode,
 )
 from .schemas import (
     BenefitCreate,
@@ -350,6 +352,83 @@ def redemption_summary_for_benefits(
     return {benefit_id: (float(total), int(count)) for benefit_id, total, count in results}
 
 
+def _safe_day(year: int, month: int, day: int) -> int:
+    _, last_day = calendar.monthrange(year, month)
+    return min(day, last_day)
+
+
+def _compute_cycle_bounds(card: CreditCard, mode: YearTrackingMode, reference: date) -> tuple[date, date]:
+    if mode == YearTrackingMode.anniversary:
+        due_month = card.fee_due_date.month
+        due_day = card.fee_due_date.day
+        cycle_end = date(reference.year, due_month, _safe_day(reference.year, due_month, due_day))
+        if cycle_end <= reference:
+            cycle_end = date(
+                reference.year + 1,
+                due_month,
+                _safe_day(reference.year + 1, due_month, due_day),
+            )
+        cycle_start = date(
+            cycle_end.year - 1,
+            due_month,
+            _safe_day(cycle_end.year - 1, due_month, due_day),
+        )
+    else:
+        cycle_start = date(reference.year, 1, 1)
+        cycle_end = date(reference.year + 1, 1, 1)
+    return cycle_start, cycle_end
+
+
+def _add_months(value: date, months: int) -> date:
+    month_index = value.month - 1 + months
+    year = value.year + month_index // 12
+    month = month_index % 12 + 1
+    day = _safe_day(year, month, value.day)
+    return date(year, month, day)
+
+
+def _resolve_window_bounds(
+    card: CreditCard, benefit: Benefit, reference: date
+) -> tuple[date, date, int]:
+    mode = benefit.window_tracking_mode or card.year_tracking_mode
+    cycle_start, cycle_end = _compute_cycle_bounds(card, mode, reference)
+    if benefit.frequency == BenefitFrequency.yearly:
+        return cycle_start, cycle_end, 1
+
+    months_map = {
+        BenefitFrequency.monthly: 1,
+        BenefitFrequency.quarterly: 3,
+        BenefitFrequency.semiannual: 6,
+    }
+    months = months_map.get(benefit.frequency)
+    if not months:
+        return cycle_start, cycle_end, 1
+
+    cursor = cycle_start
+    index = 1
+    while cursor < cycle_end:
+        window_end = _add_months(cursor, months)
+        if window_end > cycle_end:
+            window_end = cycle_end
+        if cursor <= reference < window_end:
+            return cursor, window_end, index
+        cursor = window_end
+        index += 1
+    return cycle_start, cycle_end, 1
+
+
+def _resolve_window_target(benefit: Benefit, window_index: int) -> float:
+    if window_index <= 0:
+        window_index = 1
+    window_values = benefit.window_values or []
+    idx = window_index - 1
+    if 0 <= idx < len(window_values) and window_values[idx] is not None:
+        return float(window_values[idx])
+    if benefit.value is not None:
+        return float(benefit.value)
+    return 0.0
+
+
 def sync_benefit_usage_status(session: Session, benefit: Benefit | int) -> None:
     if isinstance(benefit, int):
         benefit_obj = session.get(Benefit, benefit)
@@ -361,11 +440,22 @@ def sync_benefit_usage_status(session: Session, benefit: Benefit | int) -> None:
     if benefit_obj.type not in (BenefitType.incremental, BenefitType.standard):
         return
 
-    totals = redemption_summary_for_benefits(session, [benefit_obj.id])
+    card = session.get(CreditCard, benefit_obj.credit_card_id)
+    if not card:
+        return
+
+    today = date.today()
+    window_start, window_end, window_index = _resolve_window_bounds(card, benefit_obj, today)
+    if window_start >= window_end:
+        totals = {}
+    else:
+        totals = redemption_summary_for_benefits(
+            session, [benefit_obj.id], window_start, window_end
+        )
     total_amount, count = totals.get(benefit_obj.id, (0.0, 0))
 
     if benefit_obj.type == BenefitType.incremental:
-        target_value = float(benefit_obj.value or 0)
+        target_value = _resolve_window_target(benefit_obj, window_index)
         should_be_used = target_value > 0 and total_amount >= target_value
     else:
         should_be_used = count > 0

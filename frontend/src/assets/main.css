@@ -1232,7 +1232,20 @@ textarea:focus {
 }
 
 .window-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   flex-shrink: 0;
+}
+
+.window-card__actions .icon-button {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.window-card__actions .icon-button svg {
+  width: 0.95rem;
+  height: 0.95rem;
 }
 
 .window-title {

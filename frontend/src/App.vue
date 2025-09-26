@@ -953,7 +953,8 @@ const historyModal = reactive({
   entries: [],
   loading: false,
   windowLabel: '',
-  windowRange: null
+  windowRange: null,
+  windowOverride: null
 })
 
 const editCardModal = reactive({
@@ -1619,6 +1620,7 @@ async function handleViewHistory(payload) {
   historyModal.entries = []
   historyModal.windowLabel = ''
   historyModal.windowRange = null
+  historyModal.windowOverride = null
   historyModal.loading = true
   try {
     await populateHistoryModal(card, trackedBenefit)
@@ -1780,6 +1782,42 @@ function handleRedeemWindow(window) {
   })
 }
 
+async function handleEditWindowRedemptions(window) {
+  if (!benefitWindowsModal.cardId || !benefitWindowsModal.benefitId) {
+    return
+  }
+  const card = benefitWindowsModal.card || findCard(benefitWindowsModal.cardId)
+  const benefit =
+    benefitWindowsModal.benefit ||
+    findBenefit(benefitWindowsModal.cardId, benefitWindowsModal.benefitId)
+  if (!benefit) {
+    return
+  }
+  historyModal.open = true
+  historyModal.cardId = benefitWindowsModal.cardId
+  historyModal.benefitId = benefit.id
+  historyModal.benefit = benefit
+  historyModal.entries = []
+  historyModal.windowLabel = ''
+  historyModal.windowRange = null
+  historyModal.windowOverride = {
+    label: window.label,
+    start: window.start,
+    end: window.end,
+    index: typeof window.index === 'number' ? window.index : null
+  }
+  historyModal.loading = true
+  try {
+    await populateHistoryModal(card, benefit, {
+      windowOverride: historyModal.windowOverride
+    })
+  } catch (err) {
+    error.value = 'Unable to load redemption history.'
+  } finally {
+    historyModal.loading = false
+  }
+}
+
 function formatCycleRange(start, end) {
   const effectiveEnd = new Date(end)
   effectiveEnd.setDate(effectiveEnd.getDate() - 1)
@@ -1802,27 +1840,65 @@ async function fetchBenefitRedemptions(benefitId) {
   return Array.isArray(response.data) ? response.data : []
 }
 
-async function populateHistoryModal(card, benefit) {
+function resolveHistoryWindowSelection(windows, override) {
+  if (!Array.isArray(windows) || windows.length === 0) {
+    return null
+  }
+  if (!override) {
+    const today = new Date()
+    return (
+      windows.find((window) => isWithinRange(today, window.start, window.end)) ||
+      windows[windows.length - 1] ||
+      null
+    )
+  }
+  const overrideStart = parseDate(override.start)
+  const overrideEnd = parseDate(override.end)
+  const matchedWindow = windows.find((window) => {
+    if (typeof override.index === 'number' && typeof window.index === 'number') {
+      return window.index === override.index
+    }
+    const sameStart = overrideStart && window.start.getTime() === overrideStart.getTime()
+    const sameEnd = overrideEnd && window.end.getTime() === overrideEnd.getTime()
+    if (sameStart && sameEnd) {
+      return true
+    }
+    return override.label ? window.label === override.label : false
+  })
+  if (matchedWindow) {
+    return matchedWindow
+  }
+  if (overrideStart && overrideEnd) {
+    return {
+      start: overrideStart,
+      end: overrideEnd,
+      label: override.label || formatCycleRange(overrideStart, overrideEnd),
+      index: override.index ?? null
+    }
+  }
+  return null
+}
+
+async function populateHistoryModal(card, benefit, options = {}) {
   const resolvedCard = card || findCard(benefit.credit_card_id)
   if (!resolvedCard) {
     historyModal.entries = []
     historyModal.windowLabel = ''
     historyModal.windowRange = null
+    historyModal.windowOverride = null
     return
   }
   const cycle = computeBenefitCycle(resolvedCard, benefit)
   const windows = computeFrequencyWindows(cycle, benefit.frequency)
-  const today = new Date()
-  const currentWindow =
-    windows.find((window) => isWithinRange(today, window.start, window.end)) ||
-    windows[windows.length - 1] ||
-    null
-  historyModal.windowRange = currentWindow
-  historyModal.windowLabel = currentWindow ? currentWindow.label : ''
+  const override = options.windowOverride ?? historyModal.windowOverride
+  const selectedWindow = resolveHistoryWindowSelection(windows, override)
+  historyModal.windowRange = selectedWindow
+  historyModal.windowLabel = selectedWindow ? selectedWindow.label : ''
+  historyModal.windowOverride = override ?? null
   const entries = await fetchBenefitRedemptions(benefit.id)
-  historyModal.entries = currentWindow
+  historyModal.entries = selectedWindow?.start && selectedWindow?.end
     ? entries.filter((entry) =>
-        isWithinRange(entry.occurred_on, currentWindow.start, currentWindow.end)
+        isWithinRange(entry.occurred_on, selectedWindow.start, selectedWindow.end)
       )
     : entries
 }
@@ -1970,7 +2046,9 @@ async function refreshOpenModals() {
       historyModal.loading = true
       historyModal.benefit = benefit
       try {
-        await populateHistoryModal(card, benefit)
+        await populateHistoryModal(card, benefit, {
+          windowOverride: historyModal.windowOverride
+        })
       } finally {
         historyModal.loading = false
       }
@@ -2029,6 +2107,7 @@ function closeHistoryModal() {
   historyModal.entries = []
   historyModal.windowLabel = ''
   historyModal.windowRange = null
+  historyModal.windowOverride = null
 }
 
 onMounted(async () => {
@@ -2746,6 +2825,7 @@ onMounted(async () => {
         ? `${redemptionModal.mode === 'edit' ? 'Edit' : 'Add'} redemption · ${redemptionModal.benefit.name}`
         : 'Redemption'
     "
+    :z-index="1200"
     @close="closeRedemptionModal"
   >
     <form @submit.prevent="submitRedemption">
@@ -2911,7 +2991,20 @@ onMounted(async () => {
           </div>
           <div class="window-card__actions">
             <button
-              class="primary-button secondary small"
+              class="icon-button ghost"
+              type="button"
+              title="Edit window redemptions"
+              @click="handleEditWindowRedemptions(window)"
+            >
+              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path
+                  d="M15.58 2.42a1.5 1.5 0 0 0-2.12 0l-9 9V17h5.59l9-9a1.5 1.5 0 0 0 0-2.12zM7 15H5v-2l6.88-6.88 2 2z"
+                />
+              </svg>
+              <span class="sr-only">Edit window redemptions</span>
+            </button>
+            <button
+              class="primary-button small"
               type="button"
               @click="handleRedeemWindow(window)"
             >

@@ -1218,6 +1218,23 @@ textarea:focus {
   gap: 0.5rem;
 }
 
+.window-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.window-card__info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.window-card__actions {
+  flex-shrink: 0;
+}
+
 .window-title {
   margin: 0;
   font-size: 1rem;

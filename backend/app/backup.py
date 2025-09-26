@@ -16,7 +16,7 @@ from fastapi import FastAPI
 from sqlmodel import Session
 
 from . import crud
-from .database import DATABASE_PATH
+from .database import DATABASE_FILE
 
 logger = logging.getLogger("creditwatch.backup")
 
@@ -159,7 +159,7 @@ class BackupService:
                 pass
 
     def _export_sqlite(self, destination: Path) -> None:
-        source_path = DATABASE_PATH / "creditwatch.db"
+        source_path = DATABASE_FILE
         if not source_path.exists():
             raise FileNotFoundError("CreditWatch database has not been created yet.")
         with sqlite3.connect(source_path) as source, sqlite3.connect(destination) as target:

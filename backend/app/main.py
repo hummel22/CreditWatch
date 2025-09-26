@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import calendar
+import logging
+import os
 import shutil
 import sqlite3
 import tempfile
@@ -23,7 +25,7 @@ from sqlmodel import Session
 
 from . import crud
 from .backup import BackupConfig, BackupService, refresh_backup_settings, schedule_backup_after_change
-from .database import DATABASE_PATH, engine, get_session, init_db
+from .database import DATABASE_FILE, engine, get_session, init_db
 from .models import (
     BackupSettings,
     Benefit,
@@ -67,6 +69,8 @@ from .preconfigured import (
 )
 from .notifications import NotificationService
 
+logger = logging.getLogger("creditwatch.app")
+
 app = FastAPI(title="CreditWatch", version="0.1.0")
 
 app.add_middleware(
@@ -78,8 +82,26 @@ app.add_middleware(
 )
 
 
+def _describe_unix_credential(attr: str) -> str:
+    getter = getattr(os, attr, None)
+    if getter is None:
+        return "unavailable"
+    try:
+        return str(getter())
+    except OSError as exc:
+        return f"error:{exc}"
+
+
 @app.on_event("startup")
 async def on_startup() -> None:
+    uid = _describe_unix_credential("getuid")
+    gid = _describe_unix_credential("getgid")
+    logger.info(
+        "Starting CreditWatch backend (uid=%s gid=%s) using database %s",
+        uid,
+        gid,
+        DATABASE_FILE,
+    )
     init_db()
     service = NotificationService(engine=engine)
     service.start()
@@ -428,7 +450,7 @@ async def import_database(file: UploadFile = File(...)) -> Response:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Uploaded file is not a valid SQLite database.",
             ) from exc
-        destination = DATABASE_PATH / "creditwatch.db"
+        destination = DATABASE_FILE
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(temp_path, destination)
         engine.dispose()

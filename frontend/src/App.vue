@@ -7,6 +7,7 @@ import CreditCardList from './components/CreditCardList.vue'
 import {
   buildCardCycles,
   computeCardCycle,
+  computeBenefitCycle,
   computeFrequencyWindows,
   isWithinRange,
   parseDate
@@ -790,6 +791,7 @@ function createAdminBenefit(overrides = {}) {
     expected_value: '',
     useCustomValues: false,
     window_values: [],
+    window_tracking_mode: '',
     ...overrides
   }
 }
@@ -838,6 +840,10 @@ const MONTH_LABELS = [
 
 function supportsCustomWindowValues(frequency) {
   return Boolean(WINDOW_COUNTS[frequency])
+}
+
+function supportsAlignmentOverride(frequency) {
+  return ['monthly', 'quarterly', 'semiannual', 'yearly'].includes(frequency)
 }
 
 function resolveBenefitWindowCount(benefit) {
@@ -1092,6 +1098,9 @@ function normaliseAdminBenefitWindows(benefit) {
 
 function handleAdminBenefitFrequencyChange(benefit) {
   normaliseAdminBenefitWindows(benefit)
+  if (!supportsAlignmentOverride(benefit.frequency)) {
+    benefit.window_tracking_mode = ''
+  }
 }
 
 function toggleAdminBenefitCustomValues(benefit, value) {
@@ -1178,7 +1187,8 @@ function openAdminEditModal(card) {
         Array.isArray(benefit.window_values) && benefit.window_values.length > 0,
       window_values: Array.isArray(benefit.window_values)
         ? benefit.window_values.map((value) => value.toString())
-        : []
+        : [],
+      window_tracking_mode: benefit.window_tracking_mode || ''
     })
   )
   if (!adminModal.form.benefits.length) {
@@ -1217,6 +1227,7 @@ function handleAdminBenefitTypeChange(benefit) {
     benefit.value = ''
     benefit.useCustomValues = false
     benefit.window_values = []
+    benefit.window_tracking_mode = ''
   } else {
     benefit.expected_value = ''
     normaliseAdminBenefitWindows(benefit)
@@ -1264,6 +1275,14 @@ async function submitAdminCard() {
             const parsed = Number(rawExpected)
             base.expected_value = Number.isNaN(parsed) ? null : parsed
           }
+        }
+        if (supportsAlignmentOverride(benefit.frequency)) {
+          base.window_tracking_mode =
+            benefit.window_tracking_mode && benefit.window_tracking_mode !== ''
+              ? benefit.window_tracking_mode
+              : null
+        } else {
+          base.window_tracking_mode = null
         }
         return base
       })
@@ -1736,7 +1755,7 @@ async function populateHistoryModal(card, benefit) {
     historyModal.windowRange = null
     return
   }
-  const cycle = computeCardCycle(resolvedCard)
+  const cycle = computeBenefitCycle(resolvedCard, benefit)
   const windows = computeFrequencyWindows(cycle, benefit.frequency)
   const today = new Date()
   const currentWindow =
@@ -1759,7 +1778,7 @@ async function populateBenefitWindows(card, benefit) {
     benefitWindowsModal.windows = []
     return
   }
-  const cycle = computeCardCycle(resolvedCard)
+  const cycle = computeBenefitCycle(resolvedCard, benefit)
   const windows = computeFrequencyWindows(cycle, benefit.frequency)
   const entries = await fetchBenefitRedemptions(benefit.id)
   benefitWindowsModal.windows = windows.map((window) => {
@@ -2881,6 +2900,16 @@ onMounted(async () => {
               <option v-for="option in frequencies" :key="option" :value="option">
                 {{ option.charAt(0).toUpperCase() + option.slice(1) }}
               </option>
+            </select>
+          </div>
+          <div
+            v-if="supportsAlignmentOverride(benefit.frequency)"
+            class="field-group admin-benefit-alignment"
+          >
+            <select v-model="benefit.window_tracking_mode">
+              <option value="">Match card cycle</option>
+              <option value="calendar">Calendar year</option>
+              <option value="anniversary">Align with AF year</option>
             </select>
           </div>
           <textarea

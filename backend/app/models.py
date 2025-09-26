@@ -71,6 +71,7 @@ class Benefit(SQLModel, table=True):
         default=None,
         sa_column=Column(JSON, nullable=True),
     )
+    window_tracking_mode: Optional[YearTrackingMode] = Field(default=None)
     expiration_date: Optional[date] = None
     is_used: bool = Field(default=False)
     used_at: Optional[datetime] = None

@@ -57,23 +57,25 @@ export function addMonths(date, count) {
   return makeDate(targetYear, monthIndex, instance.getDate())
 }
 
-export function computeCardCycle(card, referenceDate = new Date()) {
+export function computeCycleForMode(card, mode, referenceDate = new Date()) {
   const today = startOfDay(referenceDate)
-  const mode = card.year_tracking_mode || 'calendar'
-  if (mode === 'anniversary') {
-    const dueDate = parseDate(card.fee_due_date)
-    const dueMonth = dueDate.getMonth()
-    const dueDay = dueDate.getDate()
-    let cycleEnd = makeDate(today.getFullYear(), dueMonth, dueDay)
-    if (cycleEnd <= today) {
-      cycleEnd = makeDate(today.getFullYear() + 1, dueMonth, dueDay)
-    }
-    const cycleStart = makeDate(cycleEnd.getFullYear() - 1, dueMonth, dueDay)
-    return {
-      mode: 'anniversary',
-      start: cycleStart,
-      end: cycleEnd,
-      label: `${cycleStart.getFullYear()}-${cycleEnd.getFullYear()}`
+  const effectiveMode = mode || card?.year_tracking_mode || 'calendar'
+  if (effectiveMode === 'anniversary') {
+    const dueDate = parseDate(card?.fee_due_date)
+    if (dueDate) {
+      const dueMonth = dueDate.getMonth()
+      const dueDay = dueDate.getDate()
+      let cycleEnd = makeDate(today.getFullYear(), dueMonth, dueDay)
+      if (cycleEnd <= today) {
+        cycleEnd = makeDate(today.getFullYear() + 1, dueMonth, dueDay)
+      }
+      const cycleStart = makeDate(cycleEnd.getFullYear() - 1, dueMonth, dueDay)
+      return {
+        mode: 'anniversary',
+        start: cycleStart,
+        end: cycleEnd,
+        label: `${cycleStart.getFullYear()}-${cycleEnd.getFullYear()}`
+      }
     }
   }
   const year = today.getFullYear()
@@ -83,6 +85,15 @@ export function computeCardCycle(card, referenceDate = new Date()) {
     end: makeDate(year + 1, 0, 1),
     label: `${year}`
   }
+}
+
+export function computeCardCycle(card, referenceDate = new Date()) {
+  return computeCycleForMode(card, card?.year_tracking_mode || 'calendar', referenceDate)
+}
+
+export function computeBenefitCycle(card, benefit, referenceDate = new Date()) {
+  const mode = benefit?.window_tracking_mode || card?.year_tracking_mode || 'calendar'
+  return computeCycleForMode(card, mode, referenceDate)
 }
 
 export function buildCardCycles(card, earliestDate, referenceDate = new Date()) {

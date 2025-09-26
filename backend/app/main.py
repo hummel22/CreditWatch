@@ -629,28 +629,29 @@ def build_card_response(session: Session, card: CreditCard) -> CreditCardWithBen
     raw_benefits = crud.list_benefits_for_card(session, card.id)
     metrics = gather_benefit_metrics(session, card, raw_benefits)
     overall_totals = metrics["overall"]
-    cycle_totals = metrics["cycle"]
-    window_totals = metrics["window_totals"]
-    window_info = metrics["window_info"]
-    cycle_label = metrics["cycle_label"]
-    cycle_end = metrics["cycle_end"]
+    details: Dict[int, Dict[str, object]] = metrics["details"]
+    default_cycle: Dict[str, object] = metrics["default_cycle"]
+    default_cycle_label = default_cycle.get("label", "")
+    default_cycle_end = default_cycle.get("end")
+    if not isinstance(default_cycle_end, date):
+        default_cycle_end = None
 
     benefits: List[BenefitRead] = []
     for benefit in raw_benefits:
-        frequency = benefit.frequency
         summary = overall_totals.get(benefit.id)
-        cycle_total = cycle_totals.get(benefit.id, (0.0, 0))[0]
-        info = window_info.get(frequency, {})
-        window_label = info.get("label") or cycle_label
-        frequency_totals = window_totals.get(frequency, {})
-        window_entry = frequency_totals.get(benefit.id)
-        window_index = info.get("index") if isinstance(info.get("index"), int) else None
-        window_count = info.get("count") if isinstance(info.get("count"), int) else None
-        if frequency == BenefitFrequency.yearly:
+        context = details.get(benefit.id, {}) if benefit.id is not None else {}
+        cycle_total_tuple = context.get("cycle_total", (0.0, 0))
+        cycle_total = cycle_total_tuple[0]
+        cycle_label = context.get("cycle_label") or default_cycle_label
+        window_total_tuple = context.get("window_total")
+        window_label = context.get("window_label") or cycle_label
+        window_index = context.get("window_index") if isinstance(context.get("window_index"), int) else None
+        window_count = context.get("window_count") if isinstance(context.get("window_count"), int) else None
+        if benefit.frequency == BenefitFrequency.yearly:
             current_window_total = cycle_total
         else:
-            current_window_total = window_entry[0] if window_entry else 0.0
-        expiration = _compute_benefit_expiration(benefit, cycle_end, window_info)
+            current_window_total = window_total_tuple[0] if window_total_tuple else 0.0
+        expiration = _compute_benefit_expiration(benefit, context, default_cycle_end)
         current_window_value = _resolve_current_window_value(benefit, window_index)
         cycle_target_value = _calculate_cycle_target_value(benefit, window_count)
         benefits.append(
@@ -730,11 +731,11 @@ def _add_months(value: date, months: int) -> date:
     return date(year, month, day)
 
 
-def _compute_card_cycle_bounds(
-    card: CreditCard, reference: date | None = None
+def _compute_cycle_bounds(
+    card: CreditCard, mode: YearTrackingMode, reference: date | None = None
 ) -> Tuple[date, date]:
     today = reference or date.today()
-    if card.year_tracking_mode == YearTrackingMode.anniversary:
+    if mode == YearTrackingMode.anniversary:
         due_month = card.fee_due_date.month
         due_day = card.fee_due_date.day
         cycle_end = date(today.year, due_month, _safe_day(today.year, due_month, due_day))
@@ -753,8 +754,20 @@ def _compute_card_cycle_bounds(
     return cycle_start, cycle_end
 
 
+def _compute_card_cycle_bounds(
+    card: CreditCard, reference: date | None = None
+) -> Tuple[date, date]:
+    return _compute_cycle_bounds(card, card.year_tracking_mode, reference)
+
+
 def _format_cycle_label(card: CreditCard, cycle_start: date, cycle_end: date) -> str:
-    if card.year_tracking_mode == YearTrackingMode.calendar:
+    return _format_cycle_label_for_mode(card.year_tracking_mode, cycle_start, cycle_end)
+
+
+def _format_cycle_label_for_mode(
+    mode: YearTrackingMode, cycle_start: date, cycle_end: date
+) -> str:
+    if mode == YearTrackingMode.calendar:
         return str(cycle_start.year)
     inclusive_end = cycle_end - timedelta(days=1)
     return f"{cycle_start.year}-{inclusive_end.year}"
@@ -846,67 +859,112 @@ def gather_benefit_metrics(
     session: Session, card: CreditCard, benefits: List[Benefit]
 ) -> Dict[str, object]:
     benefit_ids = [benefit.id for benefit in benefits if benefit.id is not None]
-    cycle_start, cycle_end = _compute_card_cycle_bounds(card)
-    cycle_label = _format_cycle_label(card, cycle_start, cycle_end)
     overall_totals = crud.redemption_summary_for_benefits(session, benefit_ids)
-    cycle_totals = crud.redemption_summary_for_benefits(
-        session, benefit_ids, cycle_start, cycle_end
+
+    default_cycle_start, default_cycle_end = _compute_card_cycle_bounds(card)
+    default_cycle_label = _format_cycle_label(
+        card, default_cycle_start, default_cycle_end
     )
-    frequency_groups: Dict[BenefitFrequency, List[int]] = {}
+
+    benefit_details: Dict[int, Dict[str, object]] = {}
+    mode_groups: Dict[YearTrackingMode, List[Benefit]] = {}
     for benefit in benefits:
-        frequency_groups.setdefault(benefit.frequency, []).append(benefit.id)
-    window_totals: Dict[BenefitFrequency, Dict[int, Tuple[float, int]]] = {}
-    window_info: Dict[BenefitFrequency, Dict[str, object]] = {}
-    is_calendar_year = card.year_tracking_mode == YearTrackingMode.calendar
-    for frequency in BenefitFrequency:
-        window_start, window_end, label, index, total_windows = _current_frequency_window(
-            cycle_start,
-            cycle_end,
-            frequency,
-            is_calendar_year=is_calendar_year,
-        )
-        window_info[frequency] = {
-            "start": window_start,
-            "end": window_end,
-            "label": label,
-            "index": index,
-            "count": total_windows,
-        }
-        ids = frequency_groups.get(frequency, [])
-        if ids and window_start < window_end:
-            window_totals[frequency] = crud.redemption_summary_for_benefits(
-                session, ids, window_start, window_end
+        mode = benefit.window_tracking_mode or card.year_tracking_mode
+        mode_groups.setdefault(mode, []).append(benefit)
+        if benefit.id is not None and benefit.id not in benefit_details:
+            benefit_details[benefit.id] = {}
+
+    for mode, grouped_benefits in mode_groups.items():
+        cycle_start, cycle_end = _compute_cycle_bounds(card, mode)
+        cycle_label = _format_cycle_label_for_mode(mode, cycle_start, cycle_end)
+        ids = [benefit.id for benefit in grouped_benefits if benefit.id is not None]
+        if ids:
+            cycle_totals = crud.redemption_summary_for_benefits(
+                session, ids, cycle_start, cycle_end
             )
         else:
-            window_totals[frequency] = {}
+            cycle_totals = {}
+
+        frequency_groups: Dict[BenefitFrequency, List[Benefit]] = {}
+        for benefit in grouped_benefits:
+            frequency_groups.setdefault(benefit.frequency, []).append(benefit)
+            if benefit.id is None:
+                continue
+            context = benefit_details.setdefault(benefit.id, {})
+            context.update(
+                {
+                    "cycle_start": cycle_start,
+                    "cycle_end": cycle_end,
+                    "cycle_label": cycle_label,
+                    "cycle_total": cycle_totals.get(benefit.id, (0.0, 0)),
+                }
+            )
+
+        is_calendar_year = mode == YearTrackingMode.calendar
+        for frequency, freq_benefits in frequency_groups.items():
+            window_start, window_end, label, index, total_windows = _current_frequency_window(
+                cycle_start,
+                cycle_end,
+                frequency,
+                is_calendar_year=is_calendar_year,
+            )
+            freq_ids = [benefit.id for benefit in freq_benefits if benefit.id is not None]
+            if frequency == BenefitFrequency.yearly:
+                window_totals = {
+                    benefit_id: cycle_totals.get(benefit_id, (0.0, 0))
+                    for benefit_id in freq_ids
+                }
+            elif freq_ids and window_start < window_end:
+                window_totals = crud.redemption_summary_for_benefits(
+                    session, freq_ids, window_start, window_end
+                )
+            else:
+                window_totals = {}
+
+            for benefit in freq_benefits:
+                if benefit.id is None:
+                    continue
+                context = benefit_details.setdefault(benefit.id, {})
+                context.update(
+                    {
+                        "window_start": window_start,
+                        "window_end": window_end,
+                        "window_label": label,
+                        "window_index": index,
+                        "window_count": total_windows,
+                        "window_total": window_totals.get(benefit.id),
+                    }
+                )
+
     return {
         "overall": overall_totals,
-        "cycle": cycle_totals,
-        "window_totals": window_totals,
-        "window_info": window_info,
-        "cycle_label": cycle_label,
-        "cycle_start": cycle_start,
-        "cycle_end": cycle_end,
+        "details": benefit_details,
+        "default_cycle": {
+            "start": default_cycle_start,
+            "end": default_cycle_end,
+            "label": default_cycle_label,
+        },
     }
 
 
 def _compute_benefit_expiration(
     benefit: Benefit,
-    cycle_end: date,
-    window_info: Dict[BenefitFrequency, Dict[str, object]],
+    context: Dict[str, object],
+    fallback_cycle_end: date | None,
 ) -> date | None:
     if benefit.expiration_date:
         return benefit.expiration_date
     frequency = benefit.frequency
     if frequency == BenefitFrequency.yearly:
-        return cycle_end - timedelta(days=1)
+        cycle_end = context.get("cycle_end") or fallback_cycle_end
+        if isinstance(cycle_end, date):
+            return cycle_end - timedelta(days=1)
     if frequency in (
         BenefitFrequency.monthly,
         BenefitFrequency.quarterly,
         BenefitFrequency.semiannual,
     ):
-        info = window_info.get(frequency) or {}
-        window_end = info.get("end")
+        window_end = context.get("window_end")
         if isinstance(window_end, date):
             return window_end - timedelta(days=1)
     return None
@@ -959,27 +1017,33 @@ def build_enriched_benefit(
     parent_card = card or require_card(session, benefit.credit_card_id)
     metrics = gather_benefit_metrics(session, parent_card, [benefit])
     summary = metrics["overall"].get(benefit.id)
-    cycle_total = metrics["cycle"].get(benefit.id, (0.0, 0))[0]
-    frequency = benefit.frequency
-    info = metrics["window_info"].get(frequency, {})
-    window_label = info.get("label") or metrics["cycle_label"]
-    window_entry = metrics["window_totals"].get(frequency, {}).get(benefit.id)
-    window_index = info.get("index") if isinstance(info.get("index"), int) else None
-    window_count = info.get("count") if isinstance(info.get("count"), int) else None
-    if frequency == BenefitFrequency.yearly:
+    details: Dict[int, Dict[str, object]] = metrics["details"]
+    default_cycle: Dict[str, object] = metrics["default_cycle"]
+    default_cycle_label = default_cycle.get("label", "")
+    default_cycle_end = default_cycle.get("end")
+    if not isinstance(default_cycle_end, date):
+        default_cycle_end = None
+
+    context = details.get(benefit.id, {}) if benefit.id is not None else {}
+    cycle_total_tuple = context.get("cycle_total", (0.0, 0))
+    cycle_total = cycle_total_tuple[0]
+    cycle_label = context.get("cycle_label") or default_cycle_label
+    window_total_tuple = context.get("window_total")
+    window_label = context.get("window_label") or cycle_label
+    window_index = context.get("window_index") if isinstance(context.get("window_index"), int) else None
+    window_count = context.get("window_count") if isinstance(context.get("window_count"), int) else None
+    if benefit.frequency == BenefitFrequency.yearly:
         current_window_total = cycle_total
     else:
-        current_window_total = window_entry[0] if window_entry else 0.0
-    expiration = _compute_benefit_expiration(
-        benefit, metrics["cycle_end"], metrics["window_info"]
-    )
+        current_window_total = window_total_tuple[0] if window_total_tuple else 0.0
+    expiration = _compute_benefit_expiration(benefit, context, default_cycle_end)
     current_window_value = _resolve_current_window_value(benefit, window_index)
     cycle_target_value = _calculate_cycle_target_value(benefit, window_count)
     return build_benefit_read(
         benefit,
         summary,
         cycle_total,
-        metrics["cycle_label"],
+        cycle_label,
         current_window_total,
         window_label,
         expiration,
@@ -1027,6 +1091,7 @@ def build_benefit_read(
         value=benefit.value,
         expected_value=benefit.expected_value,
         window_values=list(benefit.window_values or []),
+        window_tracking_mode=benefit.window_tracking_mode,
         expiration_date=expiration_date,
         is_used=benefit.is_used,
         used_at=benefit.used_at,

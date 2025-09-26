@@ -2,13 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import BaseModal from './BaseModal.vue'
 import BenefitCard from './BenefitCard.vue'
-import {
-  computeCardCycle,
-  computeFrequencyWindows,
-  computeCalendarAlignedWindow,
-  formatDateInput,
-  parseDate
-} from '../utils/dates'
+import { computeCardCycle, computeFrequencyWindows, computeCycleForMode, formatDateInput, parseDate } from '../utils/dates'
 import { sortBenefits } from '../utils/benefits'
 
 const props = defineProps({
@@ -48,7 +42,7 @@ const WINDOW_COUNTS = {
   quarterly: 4,
   semiannual: 2
 }
-const defaultYearAlignment = computed(() =>
+const defaultAlignment = computed(() =>
   props.card.year_tracking_mode === 'anniversary' ? 'anniversary' : 'calendar'
 )
 
@@ -62,7 +56,7 @@ const form = reactive({
   value: '',
   expected_value: '',
   expiration_date: '',
-  yearlyAlignment: defaultYearAlignment.value,
+  windowTrackingMode: null,
   useCustomValues: false,
   window_values: []
 })
@@ -85,7 +79,7 @@ const windowOptions = computed(() => {
   if (!canUseCustomWindowValues.value) {
     return []
   }
-  const cycle = currentCycle.value
+  const cycle = formCycle.value
   if (!cycle) {
     return []
   }
@@ -121,6 +115,25 @@ const valuePlaceholder = computed(() => {
   }
   return 'Value'
 })
+
+const supportsAlignmentOverride = computed(() =>
+  ['monthly', 'quarterly', 'semiannual', 'yearly'].includes(form.frequency)
+)
+
+const alignmentSelection = computed({
+  get() {
+    return form.windowTrackingMode || defaultAlignment.value
+  },
+  set(value) {
+    if (value === defaultAlignment.value) {
+      form.windowTrackingMode = null
+    } else {
+      form.windowTrackingMode = value
+    }
+  }
+})
+
+const formCycle = computed(() => computeCycleForMode(props.card, alignmentSelection.value))
 
 const cycleSubtitle = computed(() =>
   currentCycle.value.mode === 'anniversary' ? 'AF year' : 'Calendar year'
@@ -174,7 +187,7 @@ watch(
   () => props.card.year_tracking_mode,
   () => {
     if (formMode.value === 'create') {
-      form.yearlyAlignment = defaultYearAlignment.value
+      form.windowTrackingMode = null
       applyFrequencyDefaults()
     }
   }
@@ -183,8 +196,8 @@ watch(
 watch(
   () => form.frequency,
   (frequency) => {
-    if (frequency !== 'yearly') {
-      form.yearlyAlignment = defaultYearAlignment.value
+    if (!supportsAlignmentOverride.value) {
+      form.windowTrackingMode = null
     }
     applyFrequencyDefaults()
     if (!canUseCustomWindowValues.value) {
@@ -225,14 +238,11 @@ watch(
   }
 )
 
-watch(
-  () => form.yearlyAlignment,
-  () => {
-    if (form.frequency === 'yearly') {
-      applyFrequencyDefaults()
-    }
+watch(alignmentSelection, () => {
+  if (autoExpiration.value) {
+    applyFrequencyDefaults()
   }
-)
+})
 
 const baseline = computed(() =>
   Math.max(props.card.annual_fee, props.card.potential_value, props.card.utilized_value, 1)
@@ -253,49 +263,33 @@ const netStatus = computed(() => {
     : { tone: 'warning', label: `Short by $${Math.abs(difference).toFixed(2)}` }
 })
 
-function computeWindowExpiration(frequency) {
-  if (['monthly', 'quarterly', 'semiannual'].includes(frequency)) {
-    const calendarWindow = computeCalendarAlignedWindow(frequency)
-    if (calendarWindow?.end instanceof Date) {
-      const windowEnd = new Date(calendarWindow.end.getTime() - 24 * 60 * 60 * 1000)
-      return formatDateInput(windowEnd)
-    }
-    return ''
-  }
-  const cycle = currentCycle.value
+function computeDefaultExpiration(frequency) {
+  const cycle = formCycle.value
   if (!cycle) {
     return ''
   }
-  const windows = computeFrequencyWindows(cycle, frequency)
-  if (!windows.length) {
-    return ''
-  }
-  const today = Date.now()
-  const activeWindow =
-    windows.find((window) => {
-      const start = window.start.getTime()
-      const end = window.end.getTime()
-      return today >= start && today < end
-    }) || windows[windows.length - 1]
-  if (!activeWindow || !(activeWindow.end instanceof Date)) {
-    return ''
-  }
-  const windowEnd = new Date(activeWindow.end.getTime() - 24 * 60 * 60 * 1000)
-  return formatDateInput(windowEnd)
-}
-
-function computeDefaultExpiration(frequency) {
-  if (frequency === 'monthly' || frequency === 'quarterly' || frequency === 'semiannual') {
-    return computeWindowExpiration(frequency)
+  if (['monthly', 'quarterly', 'semiannual'].includes(frequency)) {
+    const windows = computeFrequencyWindows(cycle, frequency)
+    if (!windows.length) {
+      return ''
+    }
+    const today = Date.now()
+    const activeWindow =
+      windows.find((window) => {
+        const start = window.start.getTime()
+        const end = window.end.getTime()
+        return today >= start && today < end
+      }) || windows[windows.length - 1]
+    if (!activeWindow || !(activeWindow.end instanceof Date)) {
+      return ''
+    }
+    const windowEnd = new Date(activeWindow.end.getTime() - 24 * 60 * 60 * 1000)
+    return formatDateInput(windowEnd)
   }
   if (frequency === 'yearly') {
-    if (form.yearlyAlignment === 'anniversary') {
-      const end = new Date(currentCycle.value.end)
-      end.setDate(end.getDate() - 1)
-      return formatDateInput(end)
-    }
-    const currentYearEnd = new Date(new Date().getFullYear(), 11, 31)
-    return formatDateInput(currentYearEnd)
+    const end = new Date(cycle.end)
+    end.setDate(end.getDate() - 1)
+    return formatDateInput(end)
   }
   return ''
 }
@@ -338,7 +332,7 @@ function resetForm() {
   form.value = ''
   form.expected_value = ''
   form.expiration_date = ''
-  form.yearlyAlignment = defaultYearAlignment.value
+  form.windowTrackingMode = null
   form.useCustomValues = false
   form.window_values = []
   autoExpiration.value = true
@@ -373,7 +367,7 @@ function populateForm(benefit) {
       ? benefit.expected_value.toString()
       : ''
   form.expiration_date = benefit.expiration_date || ''
-  form.yearlyAlignment = defaultYearAlignment.value
+  form.windowTrackingMode = benefit.window_tracking_mode || null
   form.useCustomValues = Array.isArray(benefit.window_values) && benefit.window_values.length > 0
   form.window_values = form.useCustomValues
     ? benefit.window_values.map((value) => value.toString())
@@ -386,11 +380,16 @@ function populateForm(benefit) {
     const cycleEndString = formatDateInput(cycleEnd)
     const calendarEnd = new Date(expirationDate.getFullYear(), 11, 31)
     const calendarEndString = formatDateInput(calendarEnd)
-    if (benefit.expiration_date === cycleEndString) {
-      form.yearlyAlignment = 'anniversary'
-    } else if (benefit.expiration_date === calendarEndString) {
-      form.yearlyAlignment = 'calendar'
+    if (!form.windowTrackingMode) {
+      if (benefit.expiration_date === cycleEndString) {
+        form.windowTrackingMode = 'anniversary'
+      } else if (benefit.expiration_date === calendarEndString) {
+        form.windowTrackingMode = 'calendar'
+      }
     }
+  }
+  if (form.windowTrackingMode === defaultAlignment.value) {
+    form.windowTrackingMode = null
   }
   if (!canUseCustomWindowValues.value) {
     form.useCustomValues = false
@@ -425,6 +424,15 @@ function submitForm() {
     frequency: form.frequency,
     type: form.type,
     expiration_date: form.expiration_date || null
+  }
+  if (supportsAlignmentOverride.value) {
+    if (form.windowTrackingMode) {
+      payload.window_tracking_mode = form.windowTrackingMode
+    } else if (formMode.value === 'edit') {
+      payload.window_tracking_mode = null
+    }
+  } else if (formMode.value === 'edit') {
+    payload.window_tracking_mode = null
   }
   if (form.type !== 'cumulative') {
     payload.value = Number(form.value)
@@ -638,13 +646,13 @@ function handleCardDelete() {
             />
           </label>
         </div>
-        <div v-if="form.frequency === 'yearly'" class="yearly-options">
+        <div v-if="supportsAlignmentOverride" class="alignment-options">
           <label class="radio-option">
-            <input v-model="form.yearlyAlignment" type="radio" value="calendar" />
+            <input v-model="alignmentSelection" type="radio" value="calendar" />
             <span>Calendar year</span>
           </label>
           <label class="radio-option">
-            <input v-model="form.yearlyAlignment" type="radio" value="anniversary" />
+            <input v-model="alignmentSelection" type="radio" value="anniversary" />
             <span>Align with AF year</span>
           </label>
         </div>
@@ -799,7 +807,7 @@ strong {
   color: #0f172a;
 }
 
-.yearly-options {
+.alignment-options {
   display: flex;
   gap: 0.75rem;
   flex-wrap: wrap;

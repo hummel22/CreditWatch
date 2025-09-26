@@ -117,7 +117,7 @@ const redemptionSummary = computed(() => {
   if (props.benefit.type === 'cumulative') {
     const used = props.benefit.cycle_redemption_total || 0
     if (props.benefit.expected_value != null) {
-      return `Recorded $${used.toFixed(2)} this cycle · Expected $${props.benefit.expected_value.toFixed(2)}`
+      return `Recorded $${used.toFixed(2)} this cycle · $${props.benefit.expected_value.toFixed(2)}`
     }
     return `Recorded $${used.toFixed(2)} this cycle`
   }
@@ -245,7 +245,7 @@ const annualRedeemed = computed(() => Number(props.benefit.cycle_redemption_tota
         </strong>
         <strong v-else>
           <template v-if="benefit.expected_value != null">
-            Expected ${{ Number(benefit.expected_value).toFixed(2) }}
+            ${{ Number(benefit.expected_value).toFixed(2) }}
           </template>
           <template v-else>
             ${{ benefit.cycle_redemption_total.toFixed(2) }}
@@ -254,7 +254,7 @@ const annualRedeemed = computed(() => Number(props.benefit.cycle_redemption_tota
       </div>
       <div class="benefit-actions">
         <button
-          v-if="benefit.type === 'standard'"
+          v-if="benefit.type === 'standard' && !benefit.is_used"
           class="primary-button"
           type="button"
           @click="emit('add-redemption', benefit)"
@@ -263,26 +263,13 @@ const annualRedeemed = computed(() => Number(props.benefit.cycle_redemption_tota
           Redeem
         </button>
         <button
-          v-if="benefit.type === 'standard'"
+          v-if="benefit.type !== 'standard'"
           class="primary-button secondary"
           type="button"
-          :aria-pressed="benefit.is_used"
-          title="Mark benefit as done"
-          @click="emit('toggle', !benefit.is_used)"
-        >
-          Done
-        </button>
-        <button
-          v-if="benefit.type !== 'standard'"
-          class="icon-button accent"
-          type="button"
           @click="emit('add-redemption', benefit)"
-          title="Add redemption"
+          title="Redeem benefit"
         >
-          <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-            <path d="M10 4a1 1 0 0 1 1 1v4h4a1 1 0 1 1 0 2h-4v4a1 1 0 1 1-2 0v-4H5a1 1 0 1 1 0-2h4V5a1 1 0 0 1 1-1z" />
-          </svg>
-          <span class="sr-only">Add redemption</span>
+          Redeem
         </button>
         <button
           v-if="showHistoryButton"

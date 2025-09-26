@@ -9,6 +9,7 @@ import {
   computeCardCycle,
   computeBenefitCycle,
   computeFrequencyWindows,
+  formatDateInput,
   isWithinRange,
   parseDate
 } from './utils/dates'
@@ -817,6 +818,8 @@ const benefitTypeDescriptions = {
   cumulative: 'Cumulative benefits build value as you add redemptions.'
 }
 
+const DAY_IN_MS = 24 * 60 * 60 * 1000
+
 const WINDOW_COUNTS = {
   monthly: 12,
   quarterly: 4,
@@ -1457,10 +1460,26 @@ async function handleDeleteCard(cardId) {
   }
 }
 
-function resolveDefaultRedemptionAmount(benefit) {
+function resolveDefaultRedemptionAmount(benefit, windowContext = null) {
   if (!benefit || benefit.type === 'cumulative') {
     return ''
   }
+
+  if (windowContext) {
+    const targetBase =
+      windowContext.targetValue != null
+        ? Number(windowContext.targetValue)
+        : getWindowValueForIndex(benefit, windowContext.index)
+    const baseValue = Number.isFinite(targetBase) ? targetBase : 0
+    if (baseValue <= 0) {
+      return ''
+    }
+    const windowTotal = Number(windowContext.total ?? 0)
+    const remaining = Math.max(baseValue - windowTotal, 0)
+    const suggested = remaining > 0 ? remaining : baseValue
+    return suggested > 0 ? suggested.toFixed(2) : ''
+  }
+
   const baseValue = Number(
     benefit.current_window_value ?? getWindowValueForIndex(benefit, benefit.current_window_index ?? 1)
   )
@@ -1475,11 +1494,35 @@ function resolveDefaultRedemptionAmount(benefit) {
   return suggested > 0 ? suggested.toFixed(2) : ''
 }
 
+function resolveRedemptionDateForWindow(windowContext) {
+  const today = parseDate(new Date()) || new Date()
+  if (!windowContext) {
+    return today
+  }
+  const start = parseDate(windowContext.start)
+  const end = parseDate(windowContext.end)
+  let candidate = today
+  if (start instanceof Date && !Number.isNaN(start.getTime()) && candidate < start) {
+    candidate = start
+  }
+  if (end instanceof Date && !Number.isNaN(end.getTime())) {
+    let lastDay = new Date(end.getTime() - DAY_IN_MS)
+    if (start instanceof Date && !Number.isNaN(start.getTime()) && lastDay < start) {
+      lastDay = start
+    }
+    if (candidate > lastDay) {
+      candidate = lastDay
+    }
+  }
+  return candidate
+}
+
 function handleAddRedemption(payload) {
   const benefit = payload?.benefit || payload
   const cardId = payload?.card?.id || benefit.credit_card_id
   const card = findCard(cardId) || payload?.card || null
   const trackedBenefit = findBenefit(cardId, benefit.id) || benefit
+  const windowContext = payload?.window || null
   redemptionModal.open = true
   redemptionModal.mode = 'create'
   redemptionModal.cardId = cardId
@@ -1487,8 +1530,9 @@ function handleAddRedemption(payload) {
   redemptionModal.benefit = trackedBenefit
   redemptionModal.redemptionId = null
   redemptionModal.label = ''
-  redemptionModal.amount = resolveDefaultRedemptionAmount(trackedBenefit)
-  redemptionModal.occurred_on = new Date().toISOString().slice(0, 10)
+  redemptionModal.amount = resolveDefaultRedemptionAmount(trackedBenefit, windowContext)
+  const defaultDate = resolveRedemptionDateForWindow(windowContext)
+  redemptionModal.occurred_on = formatDateInput(defaultDate)
   redemptionModal.card = card
 }
 
@@ -1725,6 +1769,17 @@ function closeBenefitWindowsModal() {
   benefitWindowsModal.windows = []
 }
 
+function handleRedeemWindow(window) {
+  if (!benefitWindowsModal.benefit) {
+    return
+  }
+  handleAddRedemption({
+    card: benefitWindowsModal.card,
+    benefit: benefitWindowsModal.benefit,
+    window
+  })
+}
+
 function formatCycleRange(start, end) {
   const effectiveEnd = new Date(end)
   effectiveEnd.setDate(effectiveEnd.getDate() - 1)
@@ -1788,14 +1843,17 @@ async function populateBenefitWindows(card, benefit) {
     const total = windowEntries.reduce((acc, entry) => acc + Number(entry.amount), 0)
     const windowIndex = typeof window.index === 'number' ? window.index : windows.indexOf(window) + 1
     const targetValue = getWindowValueForIndex(benefit, windowIndex)
+    const windowTarget = Number.isFinite(targetValue) ? targetValue : 0
     const remaining =
       benefit.type === 'incremental'
-        ? Math.max(targetValue - total, 0)
+        ? Math.max(windowTarget - total, 0)
         : null
     return {
       label: window.label,
       start: window.start,
       end: window.end,
+      index: windowIndex,
+      targetValue: windowTarget,
       entries: windowEntries,
       total,
       remaining
@@ -2846,8 +2904,21 @@ onMounted(async () => {
     <div v-if="benefitWindowsModal.loading" class="history-loading">Loading windows...</div>
     <div v-else-if="benefitWindowsModal.windows.length" class="window-grid">
       <article v-for="window in benefitWindowsModal.windows" :key="window.label" class="window-card">
-        <h3 class="window-title">{{ window.label }}</h3>
-        <p class="window-range">{{ formatCycleRange(window.start, window.end) }}</p>
+        <div class="window-card__header">
+          <div class="window-card__info">
+            <h3 class="window-title">{{ window.label }}</h3>
+            <p class="window-range">{{ formatCycleRange(window.start, window.end) }}</p>
+          </div>
+          <div class="window-card__actions">
+            <button
+              class="primary-button secondary small"
+              type="button"
+              @click="handleRedeemWindow(window)"
+            >
+              Redeem
+            </button>
+          </div>
+        </div>
         <p class="window-total">Total used: <strong>${{ window.total.toFixed(2) }}</strong></p>
         <p v-if="window.remaining !== null" class="window-remaining">
           Remaining: <strong>${{ window.remaining.toFixed(2) }}</strong>

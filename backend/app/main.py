@@ -1116,17 +1116,26 @@ def compute_benefit_totals(benefit: BenefitRead) -> Tuple[float, float]:
         if benefit.cycle_target_value is not None
         else None
     )
+    expiration = getattr(benefit, "expiration_date", None)
+    expired = bool(expiration and expiration < date.today())
+
     if benefit.type == BenefitType.standard:
-        potential = target_value if target_value is not None else float(benefit.value or 0)
-        utilized = potential if benefit.is_used else 0.0
+        base_potential = (
+            target_value if target_value is not None else float(benefit.value or 0)
+        )
+        base_utilized = base_potential if benefit.is_used else 0.0
     elif benefit.type == BenefitType.incremental:
-        potential = target_value if target_value is not None else float(benefit.value or 0)
-        utilized = min(cycle_total, potential)
+        base_potential = (
+            target_value if target_value is not None else float(benefit.value or 0)
+        )
+        base_utilized = min(cycle_total, base_potential)
     else:
         if benefit.expected_value is not None:
-            potential = float(benefit.expected_value)
-            utilized = min(cycle_total, potential)
+            base_potential = float(benefit.expected_value)
+            base_utilized = min(cycle_total, base_potential)
         else:
-            potential = cycle_total
-            utilized = cycle_total
-    return potential, utilized
+            base_potential = cycle_total
+            base_utilized = cycle_total
+
+    potential = 0.0 if expired else base_potential
+    return potential, base_utilized

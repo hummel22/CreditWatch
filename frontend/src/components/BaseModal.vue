@@ -9,6 +9,10 @@ const props = defineProps({
   title: {
     type: String,
     default: ''
+  },
+  zIndex: {
+    type: Number,
+    default: 1000
   }
 })
 
@@ -20,7 +24,12 @@ const labelledBy = computed(() => (props.title ? titleId : undefined))
 
 <template>
   <teleport to="body">
-    <div v-if="open" class="modal-backdrop" @click.self="emit('close')">
+    <div
+      v-if="open"
+      class="modal-backdrop"
+      :style="{ zIndex }"
+      @click.self="emit('close')"
+    >
       <div
         class="modal-panel"
         role="dialog"
@@ -59,7 +68,6 @@ const labelledBy = computed(() => (props.title ? titleId : undefined))
   padding: 1.5rem;
   background: rgba(15, 23, 42, 0.55);
   backdrop-filter: blur(2px);
-  z-index: 1000;
 }
 
 .modal-panel {

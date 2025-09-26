@@ -263,8 +263,8 @@ const annualRedeemed = computed(() => Number(props.benefit.cycle_redemption_tota
           Redeem
         </button>
         <button
-          v-if="benefit.type !== 'standard'"
-          class="primary-button secondary"
+          v-else-if="benefit.type !== 'standard'"
+          class="primary-button"
           type="button"
           @click="emit('add-redemption', benefit)"
           title="Redeem benefit"

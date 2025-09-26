@@ -1,28 +1,27 @@
 {
-  "slug": "amex-platinum",
   "card_type": "The Platinum Card® from American Express",
   "company_name": "American Express",
-  "annual_fee": 695,
+  "annual_fee": 695.0,
   "benefits": [
     {
       "name": "Uber Cash",
       "description": "$15 in monthly Uber Cash plus a $35 boost in December for rides or eats.",
       "frequency": "monthly",
       "type": "incremental",
-      "value": 15,
+      "value": 15.0,
       "window_values": [
-        15,
-        15,
-        15,
-        15,
-        15,
-        15,
-        15,
-        15,
-        15,
-        15,
-        15,
-        35
+        15.0,
+        15.0,
+        15.0,
+        15.0,
+        15.0,
+        15.0,
+        15.0,
+        15.0,
+        15.0,
+        15.0,
+        15.0,
+        35.0
       ]
     },
     {
@@ -30,42 +29,35 @@
       "description": "$20 in monthly credits toward eligible streaming and news subscriptions.",
       "frequency": "monthly",
       "type": "incremental",
-      "value": 20
-    },
-    {
-      "name": "Equinox credit",
-      "description": "Up to $300 in annual statement credits for eligible Equinox memberships.",
-      "frequency": "yearly",
-      "type": "incremental",
-      "value": 300
+      "value": 25.0
     },
     {
       "name": "Saks Fifth Avenue credits",
       "description": "$50 credits twice per year at Saks Fifth Avenue.",
       "frequency": "semiannual",
       "type": "incremental",
-      "value": 50
+      "value": 50.0
     },
     {
       "name": "Prepaid hotel credit",
       "description": "$200 statement credit for Fine Hotels + Resorts® or The Hotel Collection bookings made through Amex Travel.",
-      "frequency": "yearly",
+      "frequency": "semiannual",
       "type": "incremental",
-      "value": 200
+      "value": 300.0
     },
     {
       "name": "Airline incidental credits",
       "description": "$200 annual airline fee credit.",
       "frequency": "yearly",
       "type": "incremental",
-      "value": 200
+      "value": 200.0
     },
     {
       "name": "CLEAR® Plus credit",
-      "description": "Up to $189 back each year for CLEAR® Plus membership when charged to the card.",
+      "description": "Up to $209 back each year for CLEAR® Plus membership when charged to the card.",
       "frequency": "yearly",
       "type": "standard",
-      "value": 189
+      "value": 209.0
     },
     {
       "name": "Walmart+ membership credit",
@@ -75,16 +67,29 @@
       "value": 12.95
     },
     {
-      "name": "Amex Offers",
-      "description": "Track cumulative savings from Amex Offers applied to the card.",
-      "frequency": "yearly",
-      "type": "cumulative"
-    },
-    {
       "name": "Points",
       "description": "Track rewards points accrued throughout the year.",
       "frequency": "yearly",
       "type": "cumulative"
+    },
+    {
+      "name": "Resy Credit",
+      "frequency": "quarterly",
+      "type": "incremental",
+      "value": 100.0
+    },
+    {
+      "name": "Lounge Visits",
+      "frequency": "yearly",
+      "type": "cumulative",
+      "expected_value": 50.0
+    },
+    {
+      "name": "Uber One",
+      "frequency": "yearly",
+      "type": "standard",
+      "value": 120.0
     }
-  ]
+  ],
+  "slug": "amex-platinum"
 }

@@ -1,34 +1,14 @@
 {
-  "slug": "chase-ink-preferred",
   "card_type": "Ink Business Preferred® Credit Card",
   "company_name": "Chase",
-  "annual_fee": 95,
+  "annual_fee": 95.0,
   "benefits": [
     {
-      "name": "Cell phone protection claims",
-      "description": "Coverage for damaged or stolen phones purchased on the card (max $600 per claim).",
-      "frequency": "yearly",
-      "type": "incremental",
-      "value": 600
-    },
-    {
-      "name": "Shipping purchase credits",
-      "description": "Track savings from UPS, USPS, and FedEx purchases credited back by promotions.",
-      "frequency": "yearly",
-      "type": "cumulative"
-    },
-    {
-      "name": "Travel protections",
-      "description": "Trip cancellation and delay coverage valued as a one-time yearly benefit.",
-      "frequency": "yearly",
+      "name": "DoorDash",
+      "frequency": "monthly",
       "type": "standard",
-      "value": 150
-    },
-    {
-      "name": "Points",
-      "description": "Track rewards points accrued throughout the year.",
-      "frequency": "yearly",
-      "type": "cumulative"
+      "value": 10.0
     }
-  ]
+  ],
+  "slug": "chase-ink-preferred"
 }

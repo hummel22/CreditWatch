@@ -1,27 +1,14 @@
 {
-  "slug": "chase-marriott-boundless",
   "card_type": "Marriott Bonvoy Boundless® Credit Card",
   "company_name": "Chase",
-  "annual_fee": 95,
+  "annual_fee": 95.0,
   "benefits": [
     {
       "name": "Free night certificate",
       "description": "Log the value of the 35,000-point free night certificate issued each account anniversary.",
       "frequency": "yearly",
       "type": "cumulative",
-      "expected_value": 250
-    },
-    {
-      "name": "Additional free night certificate",
-      "description": "Track redemption value if you earn the extra 35k certificate after $35,000 in spend.",
-      "frequency": "yearly",
-      "type": "cumulative"
-    },
-    {
-      "name": "Marriott offers",
-      "description": "Capture targeted Chase or Amex Offers applied to Marriott stays.",
-      "frequency": "yearly",
-      "type": "cumulative"
+      "expected_value": 250.0
     },
     {
       "name": "Fifth night free savings",
@@ -34,6 +21,19 @@
       "description": "Track rewards points accrued throughout the year.",
       "frequency": "yearly",
       "type": "cumulative"
+    },
+    {
+      "name": "Gold Status",
+      "frequency": "yearly",
+      "type": "cumulative",
+      "expected_value": 100.0
+    },
+    {
+      "name": "instacart",
+      "frequency": "monthly",
+      "type": "standard",
+      "value": 10.0
     }
-  ]
+  ],
+  "slug": "chase-marriott-boundless"
 }

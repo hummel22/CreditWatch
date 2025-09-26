@@ -1,41 +1,53 @@
 {
-  "slug": "chase-united-club",
   "card_type": "United Club™ Infinite Card",
   "company_name": "Chase",
-  "annual_fee": 525,
+  "annual_fee": 525.0,
   "benefits": [
     {
       "name": "United Club membership",
       "description": "Full United Club lounge access valuation.",
       "frequency": "yearly",
       "type": "standard",
-      "value": 550
+      "value": 525.0
     },
     {
-      "name": "TravelBank cash credits",
-      "description": "$125 TravelBank cash credited each account year.",
+      "name": "Lounge Visits",
       "frequency": "yearly",
-      "type": "incremental",
-      "value": 125
+      "type": "cumulative",
+      "expected_value": 100.0
     },
     {
-      "name": "TSA PreCheck or Global Entry",
-      "description": "Credit for TSA PreCheck or Global Entry enrollment.",
-      "frequency": "yearly",
+      "name": "Rideshare Credit",
+      "frequency": "monthly",
       "type": "standard",
-      "value": 100
+      "value": 12.0,
+      "window_values": [
+        12.0,
+        12.0,
+        12.0,
+        12.0,
+        12.0,
+        12.0,
+        12.0,
+        12.0,
+        12.0,
+        12.0,
+        12.0,
+        18.0
+      ]
     },
     {
-      "name": "United offers",
-      "description": "Track promotional savings from United cardmember offers.",
+      "name": "FareLock",
       "frequency": "yearly",
-      "type": "cumulative"
+      "type": "cumulative",
+      "expected_value": 50.0
     },
     {
-      "name": "Points",
-      "description": "Track rewards points accrued throughout the year.",
-      "frequency": "yearly",
-      "type": "cumulative"
+      "name": "Instacart",
+      "frequency": "monthly",
+      "type": "incremental",
+      "value": 20.0
     }
-  ]
+  ],
+  "slug": "chase-united-club"
 }

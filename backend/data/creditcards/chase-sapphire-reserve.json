@@ -1,43 +1,28 @@
 {
-  "slug": "chase-sapphire-reserve",
   "card_type": "Chase Sapphire Reserve®",
   "company_name": "Chase",
-  "annual_fee": 550,
+  "annual_fee": 550.0,
   "benefits": [
     {
       "name": "Annual travel credit",
       "description": "$300 travel credit that resets each cardmember year.",
       "frequency": "yearly",
       "type": "incremental",
-      "value": 300
+      "value": 300.0
     },
     {
       "name": "DoorDash credits",
       "description": "$5 monthly statement credits toward DoorDash and Caviar orders when you activate DashPass.",
       "frequency": "monthly",
       "type": "incremental",
-      "value": 5
+      "value": 5.0
     },
     {
       "name": "DoorDash DashPass membership",
       "description": "Complimentary DashPass membership for primary and authorized users (currently through 12/31/2024).",
       "frequency": "yearly",
       "type": "standard",
-      "value": 96
-    },
-    {
-      "name": "Instacart+ membership & credits",
-      "description": "Instacart+ membership with up to $15 in monthly statement credits (currently through 7/31/2024).",
-      "frequency": "monthly",
-      "type": "incremental",
-      "value": 15
-    },
-    {
-      "name": "Lyft Pink membership",
-      "description": "Complimentary Lyft Pink All Access membership (through 12/31/2024) valued annually.",
-      "frequency": "yearly",
-      "type": "standard",
-      "value": 199
+      "value": 96.0
     },
     {
       "name": "Lounge visits",
@@ -46,16 +31,47 @@
       "type": "cumulative"
     },
     {
-      "name": "Chase Offers",
-      "description": "Record savings from Chase Offers applied to Sapphire Reserve purchases.",
-      "frequency": "yearly",
-      "type": "cumulative"
-    },
-    {
       "name": "Points",
       "description": "Track rewards points accrued throughout the year.",
       "frequency": "yearly",
       "type": "cumulative"
+    },
+    {
+      "name": "AppleTv",
+      "frequency": "monthly",
+      "type": "standard",
+      "value": 12.99
+    },
+    {
+      "name": "Dining Credit",
+      "frequency": "semiannual",
+      "type": "standard",
+      "value": 150.0
+    },
+    {
+      "name": "Lyft Credit",
+      "frequency": "monthly",
+      "type": "standard",
+      "value": 10.0
+    },
+    {
+      "name": "Peloton",
+      "frequency": "monthly",
+      "type": "standard",
+      "value": 10.0
+    },
+    {
+      "name": "StubHub",
+      "frequency": "semiannual",
+      "type": "standard",
+      "value": 150.0
+    },
+    {
+      "name": "The Edit Credit",
+      "frequency": "semiannual",
+      "type": "standard",
+      "value": 250.0
     }
-  ]
+  ],
+  "slug": "chase-sapphire-reserve"
 }

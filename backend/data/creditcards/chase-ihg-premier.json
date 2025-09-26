@@ -1,35 +1,28 @@
 {
-  "slug": "chase-ihg-premier",
   "card_type": "IHG® Rewards Premier Credit Card",
   "company_name": "Chase",
-  "annual_fee": 99,
+  "annual_fee": 99.0,
   "benefits": [
     {
       "name": "Free night certificate",
       "description": "Log the redemption value of the annual free night certificate (up to 40k points).",
       "frequency": "yearly",
       "type": "cumulative",
-      "expected_value": 250
+      "expected_value": 250.0
     },
     {
       "name": "IHG statement credits",
       "description": "Quarterly statement credits toward IHG purchases.",
       "frequency": "quarterly",
       "type": "incremental",
-      "value": 25
+      "value": 25.0
     },
     {
       "name": "United TravelBank credit",
       "description": "$25 in United TravelBank cash deposited twice per year after linking accounts.",
       "frequency": "semiannual",
       "type": "incremental",
-      "value": 25
-    },
-    {
-      "name": "IHG promotions",
-      "description": "Log savings from targeted IHG offers and promotions.",
-      "frequency": "yearly",
-      "type": "cumulative"
+      "value": 25.0
     },
     {
       "name": "Fourth night free savings",
@@ -42,6 +35,19 @@
       "description": "Track rewards points accrued throughout the year.",
       "frequency": "yearly",
       "type": "cumulative"
+    },
+    {
+      "name": "Instacart Credit",
+      "frequency": "monthly",
+      "type": "standard",
+      "value": 10.0
+    },
+    {
+      "name": "PLatinum Elite",
+      "frequency": "yearly",
+      "type": "cumulative",
+      "expected_value": 50.0
     }
-  ]
+  ],
+  "slug": "chase-ihg-premier"
 }

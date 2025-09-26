@@ -1,29 +1,21 @@
 {
-  "slug": "capital-one-venture-x",
   "card_type": "Capital One Venture X Rewards Credit Card",
   "company_name": "Capital One",
-  "annual_fee": 395,
+  "annual_fee": 395.0,
   "benefits": [
     {
       "name": "Capital One Travel credit",
       "description": "$300 annual credit for bookings made through Capital One Travel.",
       "frequency": "yearly",
       "type": "incremental",
-      "value": 300
+      "value": 300.0
     },
     {
       "name": "Anniversary miles bonus",
       "description": "10,000 anniversary miles each account anniversary (valued at 1¢ per mile).",
       "frequency": "yearly",
       "type": "standard",
-      "value": 100
-    },
-    {
-      "name": "Uber One membership",
-      "description": "Complimentary Uber One membership (through 11/14/2024) with automatic monthly statement credits.",
-      "frequency": "yearly",
-      "type": "standard",
-      "value": 120
+      "value": 100.0
     },
     {
       "name": "Lounge visits",
@@ -36,13 +28,7 @@
       "description": "Coverage for damaged or stolen phones when you pay your bill with the card.",
       "frequency": "yearly",
       "type": "incremental",
-      "value": 800
-    },
-    {
-      "name": "Capital One offers",
-      "description": "Track statement credits earned from Capital One Offers.",
-      "frequency": "yearly",
-      "type": "cumulative"
+      "value": 800.0
     },
     {
       "name": "Points",
@@ -50,5 +36,6 @@
       "frequency": "yearly",
       "type": "cumulative"
     }
-  ]
+  ],
+  "slug": "capital-one-venture-x"
 }

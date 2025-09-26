@@ -1,0 +1,20 @@
+{
+  "card_type": "Chase Sapphire Preferred",
+  "company_name": "Chase",
+  "annual_fee": 95.0,
+  "benefits": [
+    {
+      "name": "hotel credit",
+      "frequency": "yearly",
+      "type": "standard",
+      "value": 50.0
+    },
+    {
+      "name": "DoorDash",
+      "frequency": "monthly",
+      "type": "standard",
+      "value": 10.0
+    }
+  ],
+  "slug": "chase-preferred"
+}

@@ -1,7 +1,7 @@
 version: '3.9'
 
 services:
-  backend:
+  creditwatch:
     build:
       context: ./backend
     volumes:
@@ -15,12 +15,12 @@ services:
     build:
       context: ./frontend
       args:
-        VITE_BACKEND_URL: http://backend
+        VITE_BACKEND_URL: http://creditwatch
         VITE_BACKEND_PORT: "8010"
     depends_on:
-      - backend
+      - creditwatch
     environment:
-      - VITE_BACKEND_URL=http://backend
+      - VITE_BACKEND_URL=http://creditwatch
       - VITE_BACKEND_PORT=8010
     ports:
       - "5173:80"

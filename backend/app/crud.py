@@ -74,10 +74,12 @@ def create_benefit(session: Session, card: CreditCard, payload: BenefitCreate) -
         value=value if value is not None else 0,
         window_values=window_values,
     )
+    if benefit.type == BenefitType.cumulative:
+        benefit.window_tracking_mode = None
     session.add(benefit)
     session.commit()
     session.refresh(benefit)
-    sync_incremental_usage_status(session, benefit)
+    sync_benefit_usage_status(session, benefit)
     return benefit
 
 
@@ -95,6 +97,8 @@ def update_benefit(session: Session, benefit: Benefit, payload: BenefitUpdate) -
         benefit.used_at = None
         if new_type != BenefitType.cumulative:
             benefit.expected_value = None
+        else:
+            benefit.window_tracking_mode = None
 
     for key, item in update_data.items():
         setattr(benefit, key, item)
@@ -116,9 +120,16 @@ def update_benefit(session: Session, benefit: Benefit, payload: BenefitUpdate) -
 
     if (
         new_frequency
-        and new_frequency not in (BenefitFrequency.monthly, BenefitFrequency.quarterly, BenefitFrequency.semiannual)
+        and new_frequency
+        not in (
+            BenefitFrequency.monthly,
+            BenefitFrequency.quarterly,
+            BenefitFrequency.semiannual,
+            BenefitFrequency.yearly,
+        )
     ):
         benefit.window_values = None
+        benefit.window_tracking_mode = None
 
     if is_used is not None and benefit.type == BenefitType.standard:
         benefit.is_used = is_used
@@ -127,7 +138,7 @@ def update_benefit(session: Session, benefit: Benefit, payload: BenefitUpdate) -
     session.add(benefit)
     session.commit()
     session.refresh(benefit)
-    sync_incremental_usage_status(session, benefit)
+    sync_benefit_usage_status(session, benefit)
     return benefit
 
 
@@ -159,7 +170,7 @@ def create_benefit_redemption(
     session.add(redemption)
     session.commit()
     session.refresh(redemption)
-    sync_incremental_usage_status(session, benefit)
+    sync_benefit_usage_status(session, benefit)
     return redemption
 
 
@@ -178,7 +189,7 @@ def update_benefit_redemption(
     session.add(redemption)
     session.commit()
     session.refresh(redemption)
-    sync_incremental_usage_status(session, redemption.benefit_id)
+    sync_benefit_usage_status(session, redemption.benefit_id)
     return redemption
 
 
@@ -186,7 +197,7 @@ def delete_benefit_redemption(session: Session, redemption: BenefitRedemption) -
     benefit_id = redemption.benefit_id
     session.delete(redemption)
     session.commit()
-    sync_incremental_usage_status(session, benefit_id)
+    sync_benefit_usage_status(session, benefit_id)
 
 
 def get_notification_settings(session: Session) -> NotificationSettings | None:
@@ -339,17 +350,26 @@ def redemption_summary_for_benefits(
     return {benefit_id: (float(total), int(count)) for benefit_id, total, count in results}
 
 
-def sync_incremental_usage_status(session: Session, benefit: Benefit | int) -> None:
+def sync_benefit_usage_status(session: Session, benefit: Benefit | int) -> None:
     if isinstance(benefit, int):
         benefit_obj = session.get(Benefit, benefit)
     else:
         benefit_obj = benefit
-    if not benefit_obj or benefit_obj.type != BenefitType.incremental:
+    if not benefit_obj or benefit_obj.id is None:
+        return
+
+    if benefit_obj.type not in (BenefitType.incremental, BenefitType.standard):
         return
 
     totals = redemption_summary_for_benefits(session, [benefit_obj.id])
-    total_amount = totals.get(benefit_obj.id, (0.0, 0))[0]
-    should_be_used = benefit_obj.value > 0 and total_amount >= benefit_obj.value
+    total_amount, count = totals.get(benefit_obj.id, (0.0, 0))
+
+    if benefit_obj.type == BenefitType.incremental:
+        target_value = float(benefit_obj.value or 0)
+        should_be_used = target_value > 0 and total_amount >= target_value
+    else:
+        should_be_used = count > 0
+
     if benefit_obj.is_used != should_be_used:
         benefit_obj.is_used = should_be_used
         benefit_obj.used_at = datetime.utcnow() if should_be_used else None

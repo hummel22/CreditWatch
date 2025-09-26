@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
 import logging
 import os
 import sqlite3
+
+from filelock import FileLock, Timeout
 from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, SQLModel, create_engine
 
@@ -42,11 +45,22 @@ DATABASE_FILE = _resolve_database_file(DATABASE_PATH)
 DATABASE_URL = f"sqlite:///{DATABASE_FILE}"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
+_LOCK_FILENAME = f"{DATABASE_FILE.name}.init.lock"
+_LOCK_PATH = DATABASE_FILE.parent / _LOCK_FILENAME
+_LOCK_TIMEOUT = 60.0
+
 
 def init_db() -> None:
     """Create database tables if they do not already exist."""
 
     logger.info("Initializing database at %s", DATABASE_FILE)
+    with _database_initialisation_lock():
+        _run_database_initialisation_steps()
+
+
+def _run_database_initialisation_steps() -> None:
+    """Perform the actual database initialisation work."""
+
     try:
         SQLModel.metadata.create_all(engine)
     except (OperationalError, sqlite3.OperationalError) as exc:
@@ -56,6 +70,29 @@ def init_db() -> None:
     ensure_benefit_type_column()
     ensure_benefit_window_values_column()
     ensure_card_year_tracking_column()
+
+
+@contextmanager
+def _database_initialisation_lock() -> Iterator[None]:
+    """Serialise database initialisation across multiple workers."""
+
+    lock = FileLock(str(_LOCK_PATH))
+    try:
+        lock.acquire(timeout=_LOCK_TIMEOUT)
+        logger.debug("Acquired database initialisation lock at %s", _LOCK_PATH)
+    except Timeout as exc:
+        logger.error(
+            "Timed out after %.0fs waiting for database initialisation lock %s",
+            _LOCK_TIMEOUT,
+            _LOCK_PATH,
+        )
+        raise RuntimeError("Could not acquire database initialisation lock") from exc
+    try:
+        yield
+    finally:
+        if lock.is_locked:
+            lock.release()
+            logger.debug("Released database initialisation lock at %s", _LOCK_PATH)
 
 
 def _log_database_diagnostics(exc: Exception) -> None:

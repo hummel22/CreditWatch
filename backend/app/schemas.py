@@ -104,6 +104,33 @@ class BenefitUsageUpdate(SQLModel):
     is_used: bool
 
 
+class BenefitWindowExclusionBase(SQLModel):
+    window_start: date
+    window_end: date
+    window_index: Optional[int] = Field(default=None, ge=1)
+    window_label: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_bounds(
+        cls, values: "BenefitWindowExclusionBase"
+    ) -> "BenefitWindowExclusionBase":  # type: ignore[name-defined]
+        if values.window_end <= values.window_start:
+            raise ValueError("Window end must be after the start date.")
+        return values
+
+
+class BenefitWindowExclusionCreate(BenefitWindowExclusionBase):
+    pass
+
+
+class BenefitWindowExclusionRead(BenefitWindowExclusionBase):
+    id: int
+    benefit_id: int
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class BenefitRead(BenefitBase):
     id: int
     credit_card_id: int
@@ -122,6 +149,8 @@ class BenefitRead(BenefitBase):
     cycle_window_count: Optional[int] = Field(default=None, ge=1)
     cycle_target_value: Optional[float] = Field(default=None, ge=0)
     missed_window_value: float = Field(default=0, ge=0)
+    active_window_indexes: List[int] = Field(default_factory=list)
+    window_exclusions: List[BenefitWindowExclusionRead] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 

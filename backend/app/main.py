@@ -8,7 +8,7 @@ import sqlite3
 import tempfile
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from fastapi import (
     Depends,
@@ -32,6 +32,7 @@ from .models import (
     BenefitFrequency,
     BenefitRedemption,
     BenefitType,
+    BenefitWindowExclusion,
     CreditCard,
     YearTrackingMode,
 )
@@ -43,6 +44,8 @@ from .schemas import (
     BenefitRead,
     BenefitUpdate,
     BenefitUsageUpdate,
+    BenefitWindowExclusionCreate,
+    BenefitWindowExclusionRead,
     BackupConnectionTestRequest,
     BackupConnectionTestResult,
     BackupSettingsRead,
@@ -583,6 +586,39 @@ def create_benefit_redemption(
     return BenefitRedemptionRead.model_validate(created, from_attributes=True)
 
 
+@app.post(
+    "/api/benefits/{benefit_id}/window-deletions",
+    response_model=BenefitWindowExclusionRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_benefit_window_deletion(
+    benefit_id: int,
+    payload: BenefitWindowExclusionCreate,
+    session: Session = Depends(get_session),
+) -> BenefitWindowExclusionRead:
+    benefit = require_benefit(session, benefit_id)
+    exclusion = crud.create_benefit_window_exclusion(session, benefit, payload)
+    crud.sync_benefit_usage_status(session, benefit)
+    schedule_backup_after_change(app)
+    return BenefitWindowExclusionRead.model_validate(exclusion, from_attributes=True)
+
+
+@app.delete(
+    "/api/window-deletions/{exclusion_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+def delete_benefit_window_deletion(
+    exclusion_id: int, session: Session = Depends(get_session)
+) -> Response:
+    exclusion = require_window_exclusion(session, exclusion_id)
+    benefit = require_benefit(session, exclusion.benefit_id)
+    crud.delete_benefit_window_exclusion(session, exclusion)
+    crud.sync_benefit_usage_status(session, benefit)
+    schedule_backup_after_change(app)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @app.put(
     "/api/redemptions/{redemption_id}",
     response_model=BenefitRedemptionRead,
@@ -643,17 +679,30 @@ def build_card_response(session: Session, card: CreditCard) -> CreditCardWithBen
         cycle_total_tuple = context.get("cycle_total", (0.0, 0))
         cycle_total = cycle_total_tuple[0]
         cycle_label = context.get("cycle_label") or default_cycle_label
-        window_total_tuple = context.get("window_total")
+        window_total_tuple = context.get("window_total") or (0.0, 0)
         window_label = context.get("window_label") or cycle_label
         window_index = context.get("window_index") if isinstance(context.get("window_index"), int) else None
         window_count = context.get("window_count") if isinstance(context.get("window_count"), int) else None
-        if benefit.frequency == BenefitFrequency.yearly:
-            current_window_total = cycle_total
-        else:
-            current_window_total = window_total_tuple[0] if window_total_tuple else 0.0
+        total_window_count = (
+            context.get("total_window_count")
+            if isinstance(context.get("total_window_count"), int)
+            else None
+        )
+        active_window_indexes = (
+            context.get("active_window_indexes")
+            if isinstance(context.get("active_window_indexes"), list)
+            else []
+        )
+        window_exclusions = context.get("window_exclusions") or []
+        current_window_total = window_total_tuple[0] if window_total_tuple else 0.0
         expiration = _compute_benefit_expiration(benefit, context, default_cycle_end)
         current_window_value = _resolve_current_window_value(benefit, window_index)
-        cycle_target_value = _calculate_cycle_target_value(benefit, window_count)
+        cycle_target_value = _calculate_cycle_target_value(
+            benefit,
+            window_count,
+            active_window_indexes,
+            total_window_count,
+        )
         benefits.append(
             build_benefit_read(
                 benefit,
@@ -667,6 +716,8 @@ def build_card_response(session: Session, card: CreditCard) -> CreditCardWithBen
                 window_index,
                 window_count,
                 cycle_target_value,
+                active_window_indexes,
+                window_exclusions,
             )
         )
 
@@ -717,6 +768,19 @@ def require_redemption(session: Session, redemption_id: int) -> BenefitRedemptio
             detail="Redemption not found",
         )
     return redemption
+
+
+def require_window_exclusion(
+    session: Session, exclusion_id: int
+) -> BenefitWindowExclusion:
+    exclusion = crud.get_benefit_window_exclusion(session, exclusion_id)
+    if not exclusion:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Window deletion not found",
+        )
+    return exclusion
+
 
 def _safe_day(year: int, month: int, day: int) -> int:
     _, last_day = calendar.monthrange(year, month)
@@ -811,6 +875,125 @@ def _format_frequency_label(
     return _format_range_label(window_start, window_end)
 
 
+def _enumerate_frequency_windows(
+    cycle_start: date,
+    cycle_end: date,
+    frequency: BenefitFrequency,
+    *,
+    is_calendar_year: bool = False,
+) -> List[Dict[str, object]]:
+    months_map = {
+        BenefitFrequency.monthly: 1,
+        BenefitFrequency.quarterly: 3,
+        BenefitFrequency.semiannual: 6,
+        BenefitFrequency.yearly: 12,
+    }
+    months = months_map.get(frequency)
+    windows: List[Dict[str, object]] = []
+
+    if not months:
+        label = _format_range_label(cycle_start, cycle_end)
+        return [
+            {
+                "start": cycle_start,
+                "end": cycle_end,
+                "label": label,
+                "index": 1,
+            }
+        ]
+
+    cursor = cycle_start
+    index = 1
+    while cursor < cycle_end:
+        window_end = _add_months(cursor, months)
+        if window_end > cycle_end:
+            window_end = cycle_end
+        label = _format_frequency_label(
+            frequency, index, cursor, window_end, is_calendar_year
+        )
+        windows.append(
+            {
+                "start": cursor,
+                "end": window_end,
+                "label": label,
+                "index": index,
+            }
+        )
+        cursor = window_end
+        index += 1
+
+    if not windows:
+        label = _format_frequency_label(
+            frequency, 1, cycle_start, cycle_end, is_calendar_year
+        )
+        windows.append(
+            {
+                "start": cycle_start,
+                "end": cycle_end,
+                "label": label,
+                "index": 1,
+            }
+        )
+    return windows
+
+
+def _filter_frequency_windows(
+    windows: Sequence[Dict[str, object]],
+    exclusions: Sequence[BenefitWindowExclusion],
+) -> List[Dict[str, object]]:
+    if not exclusions:
+        return list(windows)
+    filtered: List[Dict[str, object]] = []
+    for window in windows:
+        if any(
+            _window_matches_frequency_window(window, exclusion)
+            for exclusion in exclusions
+        ):
+            continue
+        filtered.append(window)
+    return filtered
+
+
+def _window_matches_frequency_window(
+    window: Dict[str, object], exclusion: BenefitWindowExclusion
+) -> bool:
+    index = window.get("index")
+    if (
+        exclusion.window_index is not None
+        and index is not None
+        and exclusion.window_index == index
+    ):
+        return True
+    start = window.get("start")
+    end = window.get("end")
+    if (
+        isinstance(start, date)
+        and isinstance(end, date)
+        and exclusion.window_start == start
+        and exclusion.window_end == end
+    ):
+        return True
+    label = window.get("label")
+    if exclusion.window_label and exclusion.window_label == label:
+        return True
+    return False
+
+
+def _select_window_for_reference(
+    windows: Sequence[Dict[str, object]], reference: date
+) -> Dict[str, object] | None:
+    for window in windows:
+        start = window.get("start")
+        end = window.get("end")
+        if (
+            isinstance(start, date)
+            and isinstance(end, date)
+            and start <= reference < end
+        ):
+            return window
+    return None
+
+
 def _current_frequency_window(
     cycle_start: date,
     cycle_end: date,
@@ -820,39 +1003,24 @@ def _current_frequency_window(
     is_calendar_year: bool = False,
 ) -> Tuple[date, date, str, int, int]:
     reference_date = reference or date.today()
-    months_map = {
-        BenefitFrequency.monthly: 1,
-        BenefitFrequency.quarterly: 3,
-        BenefitFrequency.semiannual: 6,
-        BenefitFrequency.yearly: 12,
-    }
-    months = months_map.get(frequency)
-    if not months:
+    windows = _enumerate_frequency_windows(
+        cycle_start,
+        cycle_end,
+        frequency,
+        is_calendar_year=is_calendar_year,
+    )
+    if not windows:
         label = _format_range_label(cycle_start, cycle_end)
         return cycle_start, cycle_end, label, 1, 1
-    windows: List[Tuple[date, date, str, int]] = []
-    index = 1
-    cursor = cycle_start
-    while cursor < cycle_end:
-        window_end = _add_months(cursor, months)
-        if window_end > cycle_end:
-            window_end = cycle_end
-        label = _format_frequency_label(
-            frequency, index, cursor, window_end, is_calendar_year
-        )
-        windows.append((cursor, window_end, label, index))
-        cursor = window_end
-        index += 1
-    if not windows:
-        label = _format_frequency_label(
-            frequency, 1, cycle_start, cycle_end, is_calendar_year
-        )
-        return cycle_start, cycle_end, label, 1, 1
-    for window_start, window_end, label, idx in windows:
-        if window_start <= reference_date < window_end:
-            return window_start, window_end, label, idx, len(windows)
-    last_start, last_end, last_label, last_idx = windows[-1]
-    return last_start, last_end, last_label, last_idx, len(windows)
+    for window in windows:
+        start = window["start"]
+        end = window["end"]
+        if isinstance(start, date) and isinstance(end, date) and start <= reference_date < end:
+            return start, end, str(window["label"]), int(window["index"]), len(windows)
+    last = windows[-1]
+    start = last["start"] if isinstance(last["start"], date) else cycle_start
+    end = last["end"] if isinstance(last["end"], date) else cycle_end
+    return start, end, str(last["label"]), int(last["index"]), len(windows)
 
 
 def gather_benefit_metrics(
@@ -874,6 +1042,8 @@ def gather_benefit_metrics(
         if benefit.id is not None and benefit.id not in benefit_details:
             benefit_details[benefit.id] = {}
 
+    window_exclusions = crud.list_benefit_window_exclusions(session, benefit_ids)
+
     for mode, grouped_benefits in mode_groups.items():
         cycle_start, cycle_end = _compute_cycle_bounds(card, mode)
         cycle_label = _format_cycle_label_for_mode(mode, cycle_start, cycle_end)
@@ -885,9 +1055,11 @@ def gather_benefit_metrics(
         else:
             cycle_totals = {}
 
-        frequency_groups: Dict[BenefitFrequency, List[Benefit]] = {}
+        is_calendar_year = mode == YearTrackingMode.calendar
+        window_cache: Dict[BenefitFrequency, List[Dict[str, object]]] = {}
+        reference_date = date.today()
+
         for benefit in grouped_benefits:
-            frequency_groups.setdefault(benefit.frequency, []).append(benefit)
             if benefit.id is None:
                 continue
             context = benefit_details.setdefault(benefit.id, {})
@@ -900,41 +1072,59 @@ def gather_benefit_metrics(
                 }
             )
 
-        is_calendar_year = mode == YearTrackingMode.calendar
-        for frequency, freq_benefits in frequency_groups.items():
-            window_start, window_end, label, index, total_windows = _current_frequency_window(
-                cycle_start,
-                cycle_end,
-                frequency,
-                is_calendar_year=is_calendar_year,
-            )
-            freq_ids = [benefit.id for benefit in freq_benefits if benefit.id is not None]
-            if frequency == BenefitFrequency.yearly:
-                window_totals = {
-                    benefit_id: cycle_totals.get(benefit_id, (0.0, 0))
-                    for benefit_id in freq_ids
-                }
-            elif freq_ids and window_start < window_end:
-                window_totals = crud.redemption_summary_for_benefits(
-                    session, freq_ids, window_start, window_end
+            frequency = benefit.frequency
+            cached_windows = window_cache.get(frequency)
+            if cached_windows is None:
+                cached_windows = _enumerate_frequency_windows(
+                    cycle_start,
+                    cycle_end,
+                    frequency,
+                    is_calendar_year=is_calendar_year,
                 )
-            else:
-                window_totals = {}
+                window_cache[frequency] = cached_windows
 
-            for benefit in freq_benefits:
-                if benefit.id is None:
-                    continue
-                context = benefit_details.setdefault(benefit.id, {})
-                context.update(
-                    {
-                        "window_start": window_start,
-                        "window_end": window_end,
-                        "window_label": label,
-                        "window_index": index,
-                        "window_count": total_windows,
-                        "window_total": window_totals.get(benefit.id),
-                    }
-                )
+            exclusions = window_exclusions.get(benefit.id, [])
+            active_windows = _filter_frequency_windows(cached_windows, exclusions)
+            active_indexes = [window["index"] for window in active_windows]
+            selected_window = _select_window_for_reference(active_windows, reference_date)
+            if selected_window is None and active_windows:
+                selected_window = active_windows[-1]
+
+            if selected_window:
+                window_start = selected_window["start"]
+                window_end = selected_window["end"]
+                window_label = selected_window["label"]
+                window_index = selected_window["index"]
+                if (
+                    frequency != BenefitFrequency.yearly
+                    and window_start < window_end
+                ):
+                    totals = crud.redemption_summary_for_benefits(
+                        session, [benefit.id], window_start, window_end
+                    )
+                    window_total = totals.get(benefit.id, (0.0, 0))
+                else:
+                    window_total = cycle_totals.get(benefit.id, (0.0, 0))
+            else:
+                window_start = None
+                window_end = None
+                window_label = None
+                window_index = None
+                window_total = (0.0, 0)
+
+            context.update(
+                {
+                    "window_start": window_start,
+                    "window_end": window_end,
+                    "window_label": window_label or cycle_label,
+                    "window_index": window_index,
+                    "window_count": len(active_indexes),
+                    "total_window_count": len(cached_windows),
+                    "window_total": window_total,
+                    "active_window_indexes": active_indexes,
+                    "window_exclusions": exclusions,
+                }
+            )
 
     return {
         "overall": overall_totals,
@@ -985,7 +1175,10 @@ def _resolve_current_window_value(
 
 
 def _calculate_cycle_target_value(
-    benefit: Benefit | BenefitRead, window_count: Optional[int]
+    benefit: Benefit | BenefitRead,
+    window_count: Optional[int],
+    active_window_indexes: Optional[Sequence[int]] = None,
+    total_window_count: Optional[int] = None,
 ) -> Optional[float]:
     if benefit.type == BenefitType.cumulative:
         expected = getattr(benefit, "expected_value", None)
@@ -995,19 +1188,25 @@ def _calculate_cycle_target_value(
 
     base_value = getattr(benefit, "value", None)
     windows = getattr(benefit, "window_values", None) or []
-    if not window_count or window_count <= 0:
+    indexes: List[int]
+    if active_window_indexes:
+        indexes = [idx for idx in active_window_indexes if isinstance(idx, int) and idx > 0]
+    elif window_count and window_count > 0:
+        indexes = list(range(1, window_count + 1))
+    elif total_window_count and total_window_count > 0:
+        indexes = list(range(1, total_window_count + 1))
+    else:
         return float(base_value) if base_value is not None else None
 
     total = 0.0
-    for idx in range(window_count):
-        if idx < len(windows):
-            total += float(windows[idx] or 0)
+    for idx in indexes:
+        window_idx = idx - 1
+        if 0 <= window_idx < len(windows):
+            total += float(windows[window_idx] or 0)
         elif base_value is not None:
             total += float(base_value)
     if total == 0.0 and base_value is None and not windows:
         return None
-    if total == 0.0 and base_value is not None and not windows:
-        return float(base_value) * window_count
     return total
 
 
@@ -1028,17 +1227,30 @@ def build_enriched_benefit(
     cycle_total_tuple = context.get("cycle_total", (0.0, 0))
     cycle_total = cycle_total_tuple[0]
     cycle_label = context.get("cycle_label") or default_cycle_label
-    window_total_tuple = context.get("window_total")
+    window_total_tuple = context.get("window_total") or (0.0, 0)
     window_label = context.get("window_label") or cycle_label
     window_index = context.get("window_index") if isinstance(context.get("window_index"), int) else None
     window_count = context.get("window_count") if isinstance(context.get("window_count"), int) else None
-    if benefit.frequency == BenefitFrequency.yearly:
-        current_window_total = cycle_total
-    else:
-        current_window_total = window_total_tuple[0] if window_total_tuple else 0.0
+    total_window_count = (
+        context.get("total_window_count")
+        if isinstance(context.get("total_window_count"), int)
+        else None
+    )
+    active_window_indexes = (
+        context.get("active_window_indexes")
+        if isinstance(context.get("active_window_indexes"), list)
+        else []
+    )
+    window_exclusions = context.get("window_exclusions") or []
+    current_window_total = window_total_tuple[0] if window_total_tuple else 0.0
     expiration = _compute_benefit_expiration(benefit, context, default_cycle_end)
     current_window_value = _resolve_current_window_value(benefit, window_index)
-    cycle_target_value = _calculate_cycle_target_value(benefit, window_count)
+    cycle_target_value = _calculate_cycle_target_value(
+        benefit,
+        window_count,
+        active_window_indexes,
+        total_window_count,
+    )
     return build_benefit_read(
         benefit,
         summary,
@@ -1051,6 +1263,8 @@ def build_enriched_benefit(
         window_index,
         window_count,
         cycle_target_value,
+        active_window_indexes,
+        window_exclusions,
     )
 
 
@@ -1066,6 +1280,8 @@ def build_benefit_read(
     window_index: Optional[int],
     window_count: Optional[int],
     cycle_target_value: Optional[float],
+    active_window_indexes: Sequence[int] | None,
+    window_exclusions: Sequence[BenefitWindowExclusion] | Sequence[BenefitWindowExclusionRead],
 ) -> BenefitRead:
     total, count = redemption_summary or (0.0, 0)
     cycle_value = float(cycle_total)
@@ -1081,6 +1297,21 @@ def build_benefit_read(
         if cycle_target_value is not None
         else (float(benefit.expected_value) if benefit.expected_value is not None else None)
     )
+    active_indexes = [int(idx) for idx in (active_window_indexes or []) if isinstance(idx, int)]
+    if active_indexes:
+        resolved_window_count = len(active_indexes)
+    else:
+        resolved_window_count = window_count
+    exclusion_models: List[BenefitWindowExclusionRead] = []
+    for exclusion in window_exclusions or []:
+        if isinstance(exclusion, BenefitWindowExclusionRead):
+            exclusion_models.append(exclusion)
+        else:
+            exclusion_models.append(
+                BenefitWindowExclusionRead.model_validate(
+                    exclusion, from_attributes=True
+                )
+            )
     benefit_read = BenefitRead(
         id=benefit.id,
         credit_card_id=benefit.credit_card_id,
@@ -1104,9 +1335,11 @@ def build_benefit_read(
         current_window_label=window_label,
         current_window_value=current_window_value,
         current_window_index=window_index,
-        cycle_window_count=window_count,
+        cycle_window_count=resolved_window_count,
         cycle_target_value=cycle_target,
         missed_window_value=0.0,
+        active_window_indexes=active_indexes,
+        window_exclusions=exclusion_models,
     )
 
     if benefit_read.type in (BenefitType.standard, BenefitType.incremental):
@@ -1126,27 +1359,46 @@ def _calculate_missed_window_potential(
 
     window_index = getattr(benefit, "current_window_index", None)
     window_count = getattr(benefit, "cycle_window_count", None)
+    active_indexes = list(getattr(benefit, "active_window_indexes", []) or [])
 
-    if not window_index or window_index <= 1:
-        return 0.0
-
-    total_windows = window_count or window_index
-    if total_windows <= 1:
-        return 0.0
-
-    passed_windows = min(window_index - 1, total_windows)
-    if passed_windows <= 0:
-        return 0.0
-
-    window_values = list(getattr(benefit, "window_values", []) or [])
-    default_value = float(getattr(benefit, "value", 0) or 0)
-
-    expected = 0.0
-    for idx in range(passed_windows):
-        if idx < len(window_values):
-            expected += float(window_values[idx] or 0)
+    if active_indexes:
+        if window_index and window_index in active_indexes:
+            position = active_indexes.index(window_index)
         else:
-            expected += default_value
+            position = len(active_indexes)
+        relevant_indexes = active_indexes[:position]
+        if not relevant_indexes:
+            return 0.0
+        window_values = list(getattr(benefit, "window_values", []) or [])
+        default_value = float(getattr(benefit, "value", 0) or 0)
+        expected = 0.0
+        for idx in relevant_indexes:
+            array_index = idx - 1
+            if 0 <= array_index < len(window_values):
+                expected += float(window_values[array_index] or 0)
+            else:
+                expected += default_value
+    else:
+        if not window_index or window_index <= 1:
+            return 0.0
+
+        total_windows = window_count or window_index
+        if total_windows <= 1:
+            return 0.0
+
+        passed_windows = min(window_index - 1, total_windows)
+        if passed_windows <= 0:
+            return 0.0
+
+        window_values = list(getattr(benefit, "window_values", []) or [])
+        default_value = float(getattr(benefit, "value", 0) or 0)
+
+        expected = 0.0
+        for idx in range(passed_windows):
+            if idx < len(window_values):
+                expected += float(window_values[idx] or 0)
+            else:
+                expected += default_value
 
     current_window_total = float(getattr(benefit, "current_window_total", 0) or 0)
     past_redeemed = max(0.0, cycle_total - current_window_total)

@@ -850,15 +850,8 @@ function supportsAlignmentOverride(frequency) {
 }
 
 function resolveBenefitWindowCount(benefit) {
-  if (!benefit) {
-    return 1
-  }
-  if (typeof benefit.cycle_window_count === 'number' && benefit.cycle_window_count > 0) {
-    return benefit.cycle_window_count
-  }
-  return supportsCustomWindowValues(benefit.frequency)
-    ? WINDOW_COUNTS[benefit.frequency]
-    : 1
+  const indexes = resolveActiveWindowIndexes(benefit)
+  return indexes.length
 }
 
 function getWindowValueForIndex(benefit, index) {
@@ -890,18 +883,35 @@ function getCycleTargetValue(benefit) {
     const cycleTotal = Number(benefit.cycle_redemption_total ?? 0)
     return Number.isFinite(cycleTotal) ? cycleTotal : 0
   }
-  const windowCount = resolveBenefitWindowCount(benefit)
+  const indexes = resolveActiveWindowIndexes(benefit)
+  if (!indexes.length) {
+    return 0
+  }
   if (Array.isArray(benefit.window_values) && benefit.window_values.length) {
-    return benefit.window_values.slice(0, windowCount).reduce((acc, value) => {
-      const parsed = Number(value ?? 0)
-      return acc + (Number.isFinite(parsed) ? parsed : 0)
-    }, 0)
+    return indexes.reduce((acc, index) => acc + getWindowValueForIndex(benefit, index), 0)
   }
   const base = Number(benefit.value ?? 0)
   if (!Number.isFinite(base)) {
     return 0
   }
-  return base * windowCount
+  return base * indexes.length
+}
+
+function resolveActiveWindowIndexes(benefit) {
+  if (!benefit) {
+    return []
+  }
+  if (Array.isArray(benefit.active_window_indexes) && benefit.active_window_indexes.length) {
+    return benefit.active_window_indexes.filter((value) => typeof value === 'number' && value > 0)
+  }
+  if (typeof benefit.cycle_window_count === 'number' && benefit.cycle_window_count > 0) {
+    return Array.from({ length: benefit.cycle_window_count }, (_, idx) => idx + 1)
+  }
+  if (supportsCustomWindowValues(benefit.frequency)) {
+    const count = WINDOW_COUNTS[benefit.frequency]
+    return Array.from({ length: count }, (_, idx) => idx + 1)
+  }
+  return []
 }
 
 const showCardModal = ref(false)
@@ -986,6 +996,7 @@ const benefitWindowsModal = reactive({
   card: null,
   benefit: null,
   windows: [],
+  deletedWindows: [],
   loading: false
 })
 
@@ -1752,6 +1763,7 @@ async function handleViewBenefitWindows(payload) {
   benefitWindowsModal.card = card
   benefitWindowsModal.benefit = trackedBenefit
   benefitWindowsModal.windows = []
+  benefitWindowsModal.deletedWindows = []
   benefitWindowsModal.loading = true
   try {
     await populateBenefitWindows(card, trackedBenefit)
@@ -1769,6 +1781,7 @@ function closeBenefitWindowsModal() {
   benefitWindowsModal.card = null
   benefitWindowsModal.benefit = null
   benefitWindowsModal.windows = []
+  benefitWindowsModal.deletedWindows = []
 }
 
 function handleRedeemWindow(window) {
@@ -1818,6 +1831,50 @@ async function handleEditWindowRedemptions(window) {
   }
 }
 
+async function handleDeleteWindow(window) {
+  if (!benefitWindowsModal.benefitId) {
+    return
+  }
+  const confirmed = await requestConfirmation({
+    title: 'Delete window',
+    message: `Exclude "${window.label}" from tracking? This removes the window from progress and history calculations.`,
+    confirmLabel: 'Delete window'
+  })
+  if (!confirmed) {
+    return
+  }
+  try {
+    await apiClient.post(`/api/benefits/${benefitWindowsModal.benefitId}/window-deletions`, {
+      window_start: formatDateInput(window.start),
+      window_end: formatDateInput(window.end),
+      window_index: typeof window.index === 'number' ? window.index : null,
+      window_label: window.label
+    })
+    await loadCards()
+    await refreshOpenModals()
+  } catch (err) {
+    error.value = 'Unable to delete the window.'
+  }
+}
+
+async function handleRestoreWindow(exclusion) {
+  const confirmed = await requestConfirmation({
+    title: 'Restore window',
+    message: 'Restore this window to tracking and recalculations?',
+    confirmLabel: 'Restore window'
+  })
+  if (!confirmed) {
+    return
+  }
+  try {
+    await apiClient.delete(`/api/window-deletions/${exclusion.id}`)
+    await loadCards()
+    await refreshOpenModals()
+  } catch (err) {
+    error.value = 'Unable to restore the window.'
+  }
+}
+
 function formatCycleRange(start, end) {
   const effectiveEnd = new Date(end)
   effectiveEnd.setDate(effectiveEnd.getDate() - 1)
@@ -1833,6 +1890,58 @@ function formatCycleRange(start, end) {
     year: 'numeric'
   })
   return `${startFormatter.format(start)} – ${endFormatter.format(effectiveEnd)}`
+}
+
+function normaliseWindowExclusions(exclusions) {
+  if (!Array.isArray(exclusions)) {
+    return []
+  }
+  return exclusions
+    .map((exclusion) => {
+      const start = parseDate(exclusion.window_start)
+      const end = parseDate(exclusion.window_end)
+      return {
+        ...exclusion,
+        window_start: start,
+        window_end: end
+      }
+    })
+    .filter(
+      (item) => item.window_start instanceof Date && item.window_end instanceof Date
+    )
+    .sort(
+      (a, b) =>
+        (a.window_start?.getTime() || 0) - (b.window_start?.getTime() || 0)
+    )
+}
+
+function isWindowExcluded(window, exclusions) {
+  if (!Array.isArray(exclusions) || !exclusions.length) {
+    return false
+  }
+  return exclusions.some((exclusion) => {
+    if (
+      typeof exclusion.window_index === 'number' &&
+      typeof window.index === 'number' &&
+      exclusion.window_index === window.index
+    ) {
+      return true
+    }
+    if (
+      exclusion.window_start instanceof Date &&
+      exclusion.window_end instanceof Date &&
+      window.start instanceof Date &&
+      window.end instanceof Date &&
+      exclusion.window_start.getTime() === window.start.getTime() &&
+      exclusion.window_end.getTime() === window.end.getTime()
+    ) {
+      return true
+    }
+    if (exclusion.window_label && exclusion.window_label === window.label) {
+      return true
+    }
+    return false
+  })
 }
 
 async function fetchBenefitRedemptions(benefitId) {
@@ -1907,12 +2016,16 @@ async function populateBenefitWindows(card, benefit) {
   const resolvedCard = card || findCard(benefit.credit_card_id)
   if (!resolvedCard) {
     benefitWindowsModal.windows = []
+    benefitWindowsModal.deletedWindows = []
     return
   }
   const cycle = computeBenefitCycle(resolvedCard, benefit)
   const windows = computeFrequencyWindows(cycle, benefit.frequency)
   const entries = await fetchBenefitRedemptions(benefit.id)
-  benefitWindowsModal.windows = windows.map((window) => {
+  const exclusions = normaliseWindowExclusions(benefit.window_exclusions)
+  benefitWindowsModal.deletedWindows = exclusions
+  const activeWindows = windows.filter((window) => !isWindowExcluded(window, exclusions))
+  benefitWindowsModal.windows = activeWindows.map((window) => {
     const windowEntries = entries.filter((entry) =>
       isWithinRange(entry.occurred_on, window.start, window.end)
     )
@@ -3016,6 +3129,19 @@ onMounted(async () => {
               <span class="sr-only">Edit window redemptions</span>
             </button>
             <button
+              class="icon-button danger"
+              type="button"
+              title="Delete window"
+              @click="handleDeleteWindow(window)"
+            >
+              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path
+                  d="M7 3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1h3.5a.5.5 0 0 1 0 1h-.8l-.62 11a2 2 0 0 1-2 1.9H6.92a2 2 0 0 1-2-1.9L4.3 5H3.5a.5.5 0 0 1 0-1H7zm1 1h4V3H8zM6.3 5l.6 10.8a1 1 0 0 0 1 1h4.2a1 1 0 0 0 1-1L13.7 5z"
+                />
+              </svg>
+              <span class="sr-only">Delete window</span>
+            </button>
+            <button
               class="primary-button small"
               type="button"
               @click="handleRedeemWindow(window)"
@@ -3036,6 +3162,26 @@ onMounted(async () => {
         </ul>
         <p v-else class="history-benefit-empty">No activity recorded.</p>
       </article>
+    </div>
+    <div v-if="benefitWindowsModal.deletedWindows.length" class="window-deleted">
+      <h3 class="window-deleted__title">Deleted windows</h3>
+      <ul class="window-deleted__list">
+        <li
+          v-for="exclusion in benefitWindowsModal.deletedWindows"
+          :key="exclusion.id"
+          class="window-deleted__item"
+        >
+          <span class="window-deleted__label">
+            {{
+              exclusion.window_label ||
+                formatCycleRange(exclusion.window_start, exclusion.window_end)
+            }}
+          </span>
+          <button class="link-button" type="button" @click="handleRestoreWindow(exclusion)">
+            Restore
+          </button>
+        </li>
+      </ul>
     </div>
     <p v-else class="empty-state">No recurring windows recorded yet.</p>
   </BaseModal>

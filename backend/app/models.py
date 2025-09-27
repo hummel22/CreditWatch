@@ -88,6 +88,18 @@ class BenefitRedemption(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class BenefitWindowExclusion(SQLModel, table=True):
+    """Windows that should be excluded from benefit calculations."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    benefit_id: int = Field(foreign_key="benefit.id", index=True)
+    window_start: date = Field(index=True)
+    window_end: date
+    window_label: Optional[str] = None
+    window_index: Optional[int] = Field(default=None, ge=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class NotificationSettings(SQLModel, table=True):
     """Connection settings for the Home Assistant notification webhook."""
 

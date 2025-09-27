@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import apiClient from './utils/apiClient'
 import BaseModal from './components/BaseModal.vue'
 import BenefitCard from './components/BenefitCard.vue'
@@ -137,6 +137,55 @@ const notificationTestResults = reactive({
   custom: null,
   daily: null
 })
+
+const scrollPositions = reactive({
+  dashboard: 0,
+  benefits: 0,
+  admin: 0
+})
+
+function getScrollKey(view) {
+  return typeof view === 'string' && view ? view : 'dashboard'
+}
+
+function getScrollTop() {
+  if (typeof window === 'undefined') {
+    return 0
+  }
+  if (typeof window.scrollY === 'number') {
+    return window.scrollY
+  }
+  if (window.pageYOffset) {
+    return window.pageYOffset
+  }
+  const element =
+    typeof document !== 'undefined'
+      ? document.documentElement || document.body
+      : null
+  return element?.scrollTop || 0
+}
+
+function captureScrollPosition(view = currentView.value) {
+  if (typeof window === 'undefined') {
+    return 0
+  }
+  const key = getScrollKey(view)
+  const position = Math.max(getScrollTop(), 0)
+  scrollPositions[key] = position
+  return position
+}
+
+async function restoreScrollPosition(view = currentView.value, fallback = null) {
+  if (typeof window === 'undefined') {
+    return
+  }
+  const key = getScrollKey(view)
+  const target = fallback ?? scrollPositions[key] ?? 0
+  await nextTick()
+  window.requestAnimationFrame(() => {
+    window.scrollTo({ top: target, left: 0, behavior: 'auto' })
+  })
+}
 
 const notificationHistoryModal = reactive({
   open: false,
@@ -552,7 +601,7 @@ async function submitBackupImport() {
     backupImport.filename = ''
     backupImportInputKey.value += 1
     await loadNotificationSettings()
-    await loadCards()
+    await loadCards({ preserveScroll: true })
     await loadBackupSettings()
   } catch (err) {
     backupImport.error = extractErrorMessage(err, 'Unable to import the database file.')
@@ -1137,12 +1186,33 @@ async function loadFrequencies() {
   }
 }
 
-async function loadCards() {
+async function refreshCards({ preserveScroll = true, data = null } = {}) {
+  const activeView = currentView.value
+  let previousScroll = null
+  if (preserveScroll) {
+    previousScroll = captureScrollPosition(activeView)
+  }
+  const payload =
+    data !== null
+      ? data
+      : await apiClient
+          .get('/api/cards')
+          .then((response) => response.data)
+  cards.value = normaliseCards(payload)
+  if (preserveScroll) {
+    await restoreScrollPosition(activeView, previousScroll)
+  } else {
+    captureScrollPosition(activeView)
+  }
+  return cards.value
+}
+
+async function loadCards(options = {}) {
+  const { preserveScroll = false } = options
   loading.value = true
   error.value = ''
   try {
-    const response = await apiClient.get('/api/cards')
-    cards.value = normaliseCards(response.data)
+    await refreshCards({ ...options, preserveScroll })
   } catch (err) {
     error.value = 'Unable to load cards. Ensure the backend is running.'
   } finally {
@@ -1493,7 +1563,7 @@ async function handleCreateCard() {
         }
         await apiClient.post(`/api/cards/${response.data.id}/benefits`, benefitPayload)
       }
-      await loadCards()
+      await loadCards({ preserveScroll: true })
     } else {
       cards.value.push(createdCard)
     }
@@ -1512,8 +1582,7 @@ async function handleAddBenefit({ cardId, payload }) {
       delete body.value
     }
     await apiClient.post(`/api/cards/${cardId}/benefits`, body)
-    const refreshed = await apiClient.get('/api/cards')
-    cards.value = normaliseCards(refreshed.data)
+    await refreshCards({ preserveScroll: true })
     await refreshOpenModals()
   } catch (err) {
     error.value = 'Unable to add the benefit. Please try again.'
@@ -1523,8 +1592,7 @@ async function handleAddBenefit({ cardId, payload }) {
 async function handleToggleBenefit({ id, value }) {
   try {
     await apiClient.post(`/api/benefits/${id}/usage`, { is_used: value })
-    const refreshed = await apiClient.get('/api/cards')
-    cards.value = normaliseCards(refreshed.data)
+    await refreshCards({ preserveScroll: true })
     await refreshOpenModals()
   } catch (err) {
     error.value = 'Unable to update the benefit usage.'
@@ -1551,8 +1619,7 @@ async function handleDeleteBenefit(benefitId) {
   }
   try {
     await apiClient.delete(`/api/benefits/${benefitId}`)
-    const refreshed = await apiClient.get('/api/cards')
-    cards.value = normaliseCards(refreshed.data)
+    await refreshCards({ preserveScroll: true })
     await refreshOpenModals()
   } catch (err) {
     error.value = 'Unable to remove the benefit.'
@@ -1573,7 +1640,7 @@ async function handleDeleteCard(cardId) {
   }
   try {
     await apiClient.delete(`/api/cards/${cardId}`)
-    await loadCards()
+    await loadCards({ preserveScroll: true })
     await refreshOpenModals()
   } catch (err) {
     error.value = 'Unable to delete the card.'
@@ -1704,7 +1771,7 @@ async function submitRedemption() {
         redemptionModal.benefit.is_used = markComplete
       }
     }
-    await loadCards()
+    await loadCards({ preserveScroll: true })
     await refreshOpenModals()
     closeRedemptionModal()
   } catch (err) {
@@ -1738,7 +1805,7 @@ function handleEditRedemption(entry) {
 async function handleDeleteRedemption(entry) {
   try {
     await apiClient.delete(`/api/redemptions/${entry.id}`)
-    await loadCards()
+    await loadCards({ preserveScroll: true })
     await refreshOpenModals()
   } catch (err) {
     error.value = 'Unable to delete the redemption.'
@@ -1786,7 +1853,7 @@ async function handleUpdateBenefit({ cardId, benefitId, payload }) {
       delete body.value
     }
     await apiClient.put(`/api/benefits/${benefitId}`, body)
-    await loadCards()
+    await loadCards({ preserveScroll: true })
     await refreshOpenModals()
   } catch (err) {
     error.value = 'Unable to update the benefit.'
@@ -1935,7 +2002,7 @@ async function submitEditCard() {
       is_cancelled: Boolean(editCardModal.form.is_cancelled)
     }
     await apiClient.put(`/api/cards/${editCardModal.cardId}`, payload)
-    await loadCards()
+    await loadCards({ preserveScroll: true })
     await refreshOpenModals()
     closeEditCardModal()
   } catch (err) {
@@ -2063,7 +2130,7 @@ async function handleDeleteWindow(window) {
       window_index: typeof window.index === 'number' ? window.index : null,
       window_label: window.label
     })
-    await loadCards()
+    await loadCards({ preserveScroll: true })
     await refreshOpenModals()
   } catch (err) {
     error.value = 'Unable to delete the window.'
@@ -2081,7 +2148,7 @@ async function handleRestoreWindow(exclusion) {
   }
   try {
     await apiClient.delete(`/api/window-deletions/${exclusion.id}`)
-    await loadCards()
+    await loadCards({ preserveScroll: true })
     await refreshOpenModals()
   } catch (err) {
     error.value = 'Unable to restore the window.'
@@ -2448,7 +2515,7 @@ onMounted(async () => {
   await loadBackupSettings()
   await loadFrequencies()
   await loadPreconfiguredCards()
-  await loadCards()
+  await loadCards({ preserveScroll: false })
 })
 </script>
 

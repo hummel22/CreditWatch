@@ -1082,6 +1082,15 @@ textarea:focus {
   margin-bottom: 0.75rem;
 }
 
+.history-section-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #94a3b8;
+}
+
 .card-history-grid {
   display: flex;
   flex-direction: column;
@@ -1252,6 +1261,12 @@ textarea:focus {
 .window-card__actions .icon-button svg {
   width: 0.95rem;
   height: 0.95rem;
+}
+
+.window-card__footer {
+  margin-top: 0.25rem;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .window-deleted {

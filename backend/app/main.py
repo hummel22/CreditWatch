@@ -1213,22 +1213,36 @@ def _compute_benefit_expiration(
     context: Dict[str, object],
     fallback_cycle_end: date | None,
 ) -> date | None:
-    if benefit.expiration_date:
-        return benefit.expiration_date
     frequency = benefit.frequency
+    cycle_end = context.get("cycle_end")
+    if not isinstance(cycle_end, date):
+        cycle_end = fallback_cycle_end
+    window_end = context.get("window_end")
+
+    expected_expiration: date | None = None
     if frequency == BenefitFrequency.yearly:
-        cycle_end = context.get("cycle_end") or fallback_cycle_end
         if isinstance(cycle_end, date):
-            return cycle_end - timedelta(days=1)
-    if frequency in (
+            expected_expiration = cycle_end - timedelta(days=1)
+    elif frequency in (
         BenefitFrequency.monthly,
         BenefitFrequency.quarterly,
         BenefitFrequency.semiannual,
-    ):
-        window_end = context.get("window_end")
-        if isinstance(window_end, date):
-            return window_end - timedelta(days=1)
-    return None
+    ) and isinstance(window_end, date):
+        expected_expiration = window_end - timedelta(days=1)
+
+    if benefit.window_tracking_mode is not None and expected_expiration is not None:
+        return expected_expiration
+
+    if benefit.expiration_date:
+        if (
+            expected_expiration is not None
+            and benefit.window_tracking_mode is not None
+            and benefit.expiration_date != expected_expiration
+        ):
+            return expected_expiration
+        return benefit.expiration_date
+
+    return expected_expiration
 
 
 def _resolve_current_window_value(

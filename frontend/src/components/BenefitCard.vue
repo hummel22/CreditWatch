@@ -149,12 +149,18 @@ const incrementalProgress = computed(() => {
     ? Math.min((expired / target) * 100, Math.max(100 - usedPercent, 0))
     : 0
   const remaining = Math.max(target - used - expired, 0)
+  const remainingPercent = target > 0
+    ? Math.max(100 - usedPercent - expiredPercent, 0)
+    : 0
   const statusText = target <= 0
     ? `${used > 0 ? `$${used.toFixed(2)} logged` : 'No goal set'}`
     : remaining <= 0
       ? 'Complete'
       : `$${remaining.toFixed(2)} remaining`
   const accessibleParts = [`Used $${used.toFixed(2)} of $${target.toFixed(2)}`]
+  if (remaining > 0) {
+    accessibleParts.push(`Remaining $${remaining.toFixed(2)}`)
+  }
   if (expired > 0) {
     accessibleParts.push(`Expired $${expired.toFixed(2)}`)
   }
@@ -163,6 +169,7 @@ const incrementalProgress = computed(() => {
     target,
     remaining,
     usedPercent,
+    remainingPercent,
     expiredPercent,
     expired,
     statusText,
@@ -332,6 +339,12 @@ const standardUsage = computed(() => {
             <div
               class="benefit-progress-chart__segment benefit-progress-chart__segment--used"
               :style="{ width: `${incrementalProgress.usedPercent}%` }"
+              aria-hidden="true"
+            ></div>
+            <div
+              v-if="incrementalProgress.remainingPercent > 0"
+              class="benefit-progress-chart__segment benefit-progress-chart__segment--remaining"
+              :style="{ width: `${incrementalProgress.remainingPercent}%` }"
               aria-hidden="true"
             ></div>
             <div

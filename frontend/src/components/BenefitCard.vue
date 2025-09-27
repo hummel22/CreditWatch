@@ -179,14 +179,33 @@ const standardUsage = computed(() => {
   if (props.benefit.type !== 'standard') {
     return null
   }
-  const baseValueRaw =
+  const rawTarget =
     currentWindowValue.value ?? props.benefit.current_window_value ?? props.benefit.value ?? 0
-  const baseValue = Number(baseValueRaw) || 0
-  const used = props.benefit.is_used ? baseValue : 0
-  const expired = missedWindowValue.value
+  const target = Number(rawTarget)
+  if (!Number.isFinite(target) || target <= 0) {
+    return null
+  }
+  const loggedTotal = Number(props.benefit.current_window_total ?? 0)
+  const expired = Math.min(missedWindowValue.value, target)
+  const usedAmount = props.benefit.is_used ? target : Math.min(loggedTotal, target)
+  const remaining = Math.max(target - usedAmount - expired, 0)
+  const usedPercent = Math.min((usedAmount / target) * 100, 100)
+  const expiredPercent = Math.min((expired / target) * 100, Math.max(100 - usedPercent, 0))
+  const remainingPercent = Math.max(100 - usedPercent - expiredPercent, 0)
+  const accessibleParts = [`Used $${usedAmount.toFixed(2)} of $${target.toFixed(2)}`]
+  accessibleParts.push(`Remaining $${remaining.toFixed(2)}`)
+  if (expired > 0) {
+    accessibleParts.push(`Expired $${expired.toFixed(2)}`)
+  }
   return {
-    used,
-    expired
+    target,
+    used: usedAmount,
+    expired,
+    remaining,
+    usedPercent,
+    expiredPercent,
+    remainingPercent,
+    accessibleLabel: accessibleParts.join(' · ')
   }
 })
 </script>
@@ -288,13 +307,51 @@ const standardUsage = computed(() => {
       </div>
       <template v-else>
         <p class="benefit-progress">{{ redemptionSummary }}</p>
-        <div v-if="standardUsage" class="benefit-usage">
-          <span class="benefit-usage__value">
-            Used ${{ standardUsage.used.toFixed(2) }}
-          </span>
-          <span v-if="standardUsage.expired > 0" class="benefit-expired-text">
-            Expired ${{ standardUsage.expired.toFixed(2) }}
-          </span>
+        <div
+          v-if="standardUsage"
+          class="benefit-progress-chart benefit-progress-chart--standard"
+          role="img"
+          :aria-label="standardUsage.accessibleLabel"
+        >
+          <div class="benefit-progress-chart__track">
+            <div
+              class="benefit-progress-chart__segment benefit-progress-chart__segment--used"
+              :style="{ width: `${standardUsage.usedPercent}%` }"
+              aria-hidden="true"
+            ></div>
+            <div
+              v-if="standardUsage.remainingPercent > 0"
+              class="benefit-progress-chart__segment benefit-progress-chart__segment--remaining"
+              :style="{ width: `${standardUsage.remainingPercent}%` }"
+              aria-hidden="true"
+            ></div>
+            <div
+              v-if="standardUsage.expiredPercent > 0"
+              class="benefit-progress-chart__segment benefit-progress-chart__segment--expired"
+              :style="{ width: `${standardUsage.expiredPercent}%` }"
+              aria-hidden="true"
+            ></div>
+          </div>
+          <div class="benefit-progress-chart__legend benefit-progress-chart__legend--standard">
+            <div class="benefit-progress-chart__legend-item">
+              <span class="benefit-progress-chart__legend-label">Used</span>
+              <span class="benefit-progress-chart__legend-value">
+                ${{ standardUsage.used.toFixed(2) }}
+              </span>
+            </div>
+            <div class="benefit-progress-chart__legend-item">
+              <span class="benefit-progress-chart__legend-label">Remaining</span>
+              <span class="benefit-progress-chart__legend-value">
+                ${{ standardUsage.remaining.toFixed(2) }}
+              </span>
+            </div>
+            <div class="benefit-progress-chart__legend-item">
+              <span class="benefit-progress-chart__legend-label">Expired</span>
+              <span class="benefit-progress-chart__legend-value">
+                ${{ standardUsage.expired.toFixed(2) }}
+              </span>
+            </div>
+          </div>
         </div>
       </template>
     </section>
@@ -499,6 +556,10 @@ const standardUsage = computed(() => {
   background: linear-gradient(90deg, #38bdf8, #6366f1);
 }
 
+.benefit-progress-chart__segment--remaining {
+  background: linear-gradient(90deg, #34d399, #22c55e);
+}
+
 .benefit-progress-chart__segment--expired {
   background: linear-gradient(90deg, #fca5a5, #ef4444);
 }
@@ -513,6 +574,30 @@ const standardUsage = computed(() => {
   justify-content: space-between;
 }
 
+.benefit-progress-chart__legend--standard {
+  gap: 1rem;
+  justify-content: space-between;
+  align-items: stretch;
+}
+
+.benefit-progress-chart__legend-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.benefit-progress-chart__legend-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+}
+
+.benefit-progress-chart__legend-value {
+  font-weight: 600;
+  color: #0f172a;
+}
+
 .benefit-progress-chart__usage {
   display: flex;
   flex-direction: column;
@@ -521,19 +606,6 @@ const standardUsage = computed(() => {
 
 .benefit-progress-chart__status {
   color: #6366f1;
-}
-
-.benefit-usage {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  font-size: 0.8rem;
-  color: #0f172a;
-  margin-top: 0.4rem;
-}
-
-.benefit-usage__value {
-  font-weight: 600;
 }
 
 .benefit-expired-text {

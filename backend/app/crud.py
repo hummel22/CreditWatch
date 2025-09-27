@@ -13,6 +13,7 @@ from .models import (
     BenefitFrequency,
     BenefitRedemption,
     BenefitType,
+    BenefitWindowExclusion,
     CreditCard,
     NotificationLog,
     NotificationSettings,
@@ -24,6 +25,7 @@ from .schemas import (
     BenefitRedemptionUpdate,
     BenefitUpdate,
     BenefitUsageUpdate,
+    BenefitWindowExclusionCreate,
     CreditCardCreate,
     CreditCardUpdate,
     BackupSettingsUpdate,
@@ -160,6 +162,58 @@ def get_benefit(session: Session, benefit_id: int) -> Optional[Benefit]:
 def list_benefits_for_card(session: Session, card_id: int) -> List[Benefit]:
     statement = select(Benefit).where(Benefit.credit_card_id == card_id)
     return session.exec(statement).all()
+
+
+def list_benefit_window_exclusions(
+    session: Session, benefit_ids: Sequence[int]
+) -> Dict[int, List[BenefitWindowExclusion]]:
+    if not benefit_ids:
+        return {}
+    statement = (
+        select(BenefitWindowExclusion)
+        .where(BenefitWindowExclusion.benefit_id.in_(benefit_ids))
+        .order_by(BenefitWindowExclusion.window_start)
+    )
+    exclusions = session.exec(statement).all()
+    grouped: Dict[int, List[BenefitWindowExclusion]] = {}
+    for exclusion in exclusions:
+        grouped.setdefault(exclusion.benefit_id, []).append(exclusion)
+    return grouped
+
+
+def get_benefit_window_exclusion(
+    session: Session, exclusion_id: int
+) -> BenefitWindowExclusion | None:
+    return session.get(BenefitWindowExclusion, exclusion_id)
+
+
+def create_benefit_window_exclusion(
+    session: Session, benefit: Benefit, payload: BenefitWindowExclusionCreate
+) -> BenefitWindowExclusion:
+    data = payload.model_dump()
+    exclusion = BenefitWindowExclusion(
+        **data,
+        benefit_id=benefit.id,
+    )
+    statement = select(BenefitWindowExclusion).where(
+        BenefitWindowExclusion.benefit_id == benefit.id,
+        BenefitWindowExclusion.window_start == exclusion.window_start,
+        BenefitWindowExclusion.window_end == exclusion.window_end,
+    )
+    existing = session.exec(statement).first()
+    if existing:
+        return existing
+    session.add(exclusion)
+    session.commit()
+    session.refresh(exclusion)
+    return exclusion
+
+
+def delete_benefit_window_exclusion(
+    session: Session, exclusion: BenefitWindowExclusion
+) -> None:
+    session.delete(exclusion)
+    session.commit()
 
 
 def create_benefit_redemption(
@@ -388,7 +442,7 @@ def _add_months(value: date, months: int) -> date:
 
 
 def _resolve_window_bounds(
-    card: CreditCard, benefit: Benefit, reference: date
+    session: Session, card: CreditCard, benefit: Benefit, reference: date
 ) -> tuple[date, date, int]:
     mode = benefit.window_tracking_mode or card.year_tracking_mode
     cycle_start, cycle_end = _compute_cycle_bounds(card, mode, reference)
@@ -406,15 +460,46 @@ def _resolve_window_bounds(
 
     cursor = cycle_start
     index = 1
+    windows: List[tuple[date, date, int]] = []
     while cursor < cycle_end:
         window_end = _add_months(cursor, months)
         if window_end > cycle_end:
             window_end = cycle_end
-        if cursor <= reference < window_end:
-            return cursor, window_end, index
+        windows.append((cursor, window_end, index))
         cursor = window_end
         index += 1
-    return cycle_start, cycle_end, 1
+
+    exclusions = list_benefit_window_exclusions(session, [benefit.id]).get(benefit.id, [])
+    active_windows: List[tuple[date, date, int]] = []
+    for window_start, window_end, window_index in windows:
+        if any(
+            _window_matches_exclusion(window_start, window_end, window_index, exclusion)
+            for exclusion in exclusions
+        ):
+            continue
+        active_windows.append((window_start, window_end, window_index))
+
+    if not active_windows:
+        return cycle_start, cycle_end, 1
+
+    for window_start, window_end, window_index in active_windows:
+        if window_start <= reference < window_end:
+            return window_start, window_end, window_index
+
+    return active_windows[-1]
+
+
+def _window_matches_exclusion(
+    window_start: date,
+    window_end: date,
+    window_index: int,
+    exclusion: BenefitWindowExclusion,
+) -> bool:
+    if exclusion.window_index and exclusion.window_index == window_index:
+        return True
+    if exclusion.window_start == window_start and exclusion.window_end == window_end:
+        return True
+    return False
 
 
 def _resolve_window_target(benefit: Benefit, window_index: int) -> float:
@@ -445,7 +530,9 @@ def sync_benefit_usage_status(session: Session, benefit: Benefit | int) -> None:
         return
 
     today = date.today()
-    window_start, window_end, window_index = _resolve_window_bounds(card, benefit_obj, today)
+    window_start, window_end, window_index = _resolve_window_bounds(
+        session, card, benefit_obj, today
+    )
     if window_start >= window_end:
         totals = {}
     else:

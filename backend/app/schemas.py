@@ -59,6 +59,7 @@ class BenefitBase(SQLModel):
     expiration_date: Optional[date] = None
     window_values: Optional[List[float]] = None
     window_tracking_mode: Optional[YearTrackingMode] = None
+    exclude_from_benefits_page: bool = Field(default=False)
 
 
 class BenefitCreate(BenefitBase):
@@ -88,6 +89,7 @@ class BenefitUpdate(SQLModel):
     expected_value: Optional[float] = Field(default=None, ge=0)
     window_values: Optional[List[float]] = None
     window_tracking_mode: Optional[YearTrackingMode] = None
+    exclude_from_benefits_page: Optional[bool] = None
 
     @model_validator(mode="after")
     def validate_window_values(
@@ -432,6 +434,7 @@ class PreconfiguredBenefitBase(SQLModel):
     expected_value: Optional[float] = Field(default=None, ge=0)
     window_values: Optional[List[float]] = None
     window_tracking_mode: Optional[YearTrackingMode] = None
+    exclude_from_benefits_page: bool = Field(default=False)
 
 
 class PreconfiguredBenefitCreate(PreconfiguredBenefitBase):

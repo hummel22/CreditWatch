@@ -38,6 +38,9 @@ export function isBenefitCompleted(benefit) {
     return target > 0 && used >= target
   }
   if (benefit.type === 'cumulative') {
+    if (benefit.is_used) {
+      return true
+    }
     const expected = Number(benefit.expected_value ?? 0)
     const used = Number(benefit.cycle_redemption_total ?? 0)
     return expected > 0 && used >= expected

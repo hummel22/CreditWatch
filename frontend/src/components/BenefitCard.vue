@@ -52,6 +52,9 @@ const statusTag = computed(() => {
     }
     return { label: 'Not started', tone: 'warning' }
   }
+  if (type === 'cumulative' && props.benefit.is_used) {
+    return { label: 'Complete', tone: 'success' }
+  }
   return { label: 'Tracking', tone: 'info' }
 })
 

@@ -75,6 +75,10 @@ class Benefit(SQLModel, table=True):
     expiration_date: Optional[date] = None
     is_used: bool = Field(default=False)
     used_at: Optional[datetime] = None
+    exclude_from_benefits_page: bool = Field(
+        default=False,
+        description="Whether the benefit should be hidden from the aggregated benefits page",
+    )
 
 
 class BenefitRedemption(SQLModel, table=True):

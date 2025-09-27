@@ -58,7 +58,8 @@ const form = reactive({
   expiration_date: '',
   windowTrackingMode: null,
   useCustomValues: false,
-  window_values: []
+  window_values: [],
+  excludeFromBenefitsPage: false
 })
 
 const typeDescriptions = {
@@ -335,6 +336,7 @@ function resetForm() {
   form.windowTrackingMode = null
   form.useCustomValues = false
   form.window_values = []
+  form.excludeFromBenefitsPage = false
   autoExpiration.value = true
   applyFrequencyDefaults()
 }
@@ -372,6 +374,7 @@ function populateForm(benefit) {
   form.window_values = form.useCustomValues
     ? benefit.window_values.map((value) => value.toString())
     : []
+  form.excludeFromBenefitsPage = Boolean(benefit.exclude_from_benefits_page)
   if (benefit.frequency === 'yearly' && benefit.expiration_date) {
     const expirationDate = new Date(`${benefit.expiration_date}T00:00:00`)
     const cycleAtExpiration = computeCardCycle(props.card, expirationDate)
@@ -453,6 +456,7 @@ function submitForm() {
       payload.expected_value = Number.isNaN(parsed) ? null : parsed
     }
   }
+  payload.exclude_from_benefits_page = form.excludeFromBenefitsPage
   if (formMode.value === 'edit' && editingBenefitId.value) {
     emit('update-benefit', {
       cardId: props.card.id,
@@ -657,6 +661,10 @@ function handleCardDelete() {
             <span>Align with AF year</span>
           </label>
         </div>
+        <label class="checkbox-option">
+          <input v-model="form.excludeFromBenefitsPage" type="checkbox" />
+          <span>Hide from benefits overview</span>
+        </label>
         <p class="helper-text">{{ currentTypeDescription }}</p>
         <div class="modal-actions">
           <button class="primary-button secondary" type="button" @click="closeBenefitModal">

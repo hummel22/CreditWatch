@@ -1,6 +1,8 @@
 <script setup>
 import { computed } from 'vue'
 
+import { parseDate } from '../utils/dates'
+
 const props = defineProps({
   benefit: {
     type: Object,
@@ -75,15 +77,48 @@ const cardLabel = computed(() => {
   return name || company || ''
 })
 
+function resolveCalendarExpiration(benefit, cardContext) {
+  const frequency = benefit?.frequency
+  const trackingMode =
+    benefit?.window_tracking_mode || cardContext?.year_tracking_mode || 'calendar'
+  if (trackingMode !== 'calendar') {
+    return null
+  }
+  const baseDate = parseDate(benefit?.expiration_date)
+  if (!(baseDate instanceof Date)) {
+    return null
+  }
+  if (baseDate.getDate() !== 1) {
+    return null
+  }
+  const month = baseDate.getMonth()
+  const shouldAdjust =
+    frequency === 'monthly' ||
+    (frequency === 'quarterly' && month % 3 === 0) ||
+    (frequency === 'semiannual' && month % 6 === 0) ||
+    (frequency === 'yearly' && month === 0)
+  if (!shouldAdjust) {
+    return null
+  }
+  const adjusted = new Date(baseDate)
+  adjusted.setDate(adjusted.getDate() - 1)
+  return adjusted
+}
+
 const expirationLabel = computed(() => {
   if (!props.benefit.expiration_date) {
+    return 'No expiration set'
+  }
+  const adjusted = resolveCalendarExpiration(props.benefit, props.cardContext)
+  const displayDate = adjusted ?? parseDate(props.benefit.expiration_date)
+  if (!(displayDate instanceof Date)) {
     return 'No expiration set'
   }
   return new Intl.DateTimeFormat(undefined, {
     month: 'short',
     day: 'numeric',
     year: 'numeric'
-  }).format(new Date(props.benefit.expiration_date))
+  }).format(displayDate)
 })
 
 const missedWindowValue = computed(() => {

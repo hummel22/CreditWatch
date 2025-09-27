@@ -189,6 +189,7 @@ class CreditCardBase(SQLModel):
     annual_fee: float = Field(ge=0)
     fee_due_date: date
     year_tracking_mode: YearTrackingMode = Field(default=YearTrackingMode.calendar)
+    is_cancelled: bool = Field(default=False)
 
 
 class CreditCardCreate(CreditCardBase):
@@ -203,6 +204,7 @@ class CreditCardUpdate(SQLModel):
     annual_fee: Optional[float] = Field(default=None, ge=0)
     fee_due_date: Optional[date] = None
     year_tracking_mode: Optional[YearTrackingMode] = None
+    is_cancelled: Optional[bool] = None
 
 
 class CreditCardRead(CreditCardBase):
@@ -399,15 +401,27 @@ class NotificationDailyTestRequest(SQLModel):
 
 
 class NotificationBenefitSummary(SQLModel):
+    summary_type: str = Field(default="benefit")
     card_name: str
     benefit_name: str
     expiration_date: date
 
 
+class NotificationCancelledCardSummary(SQLModel):
+    summary_type: str = Field(default="cancelled_card")
+    card_name: str
+    account_name: Optional[str] = None
+    company_name: Optional[str] = None
+    fee_due_date: date
+    days_until_due: int
+
+
 class NotificationDispatchResult(SQLModel):
     sent: bool
     message: Optional[str] = None
-    categories: Dict[str, List[NotificationBenefitSummary]] = Field(default_factory=dict)
+    categories: Dict[
+        str, List[NotificationBenefitSummary | NotificationCancelledCardSummary]
+    ] = Field(default_factory=dict)
     target: Optional[str] = None
 
 
@@ -476,4 +490,13 @@ class PreconfiguredCardRead(SQLModel):
     company_name: str
     annual_fee: float = Field(ge=0)
     benefits: List[PreconfiguredBenefitRead]
+
+
+class CardTemplateExportRequest(SQLModel):
+    slug: Optional[str] = None
+    card_type: Optional[str] = None
+    company_name: Optional[str] = None
+    annual_fee: Optional[float] = Field(default=None, ge=0)
+    override_existing: bool = Field(default=False)
+    override_slug: Optional[str] = None
 

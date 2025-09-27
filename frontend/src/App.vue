@@ -616,6 +616,71 @@ function formatNotificationDate(value) {
   return date.toLocaleDateString()
 }
 
+function getNotificationItemType(item) {
+  if (!item || typeof item !== 'object') {
+    return 'unknown'
+  }
+  const summaryType = item.summary_type
+  if (summaryType === 'cancelled_card' || summaryType === 'benefit') {
+    return summaryType
+  }
+  if (Object.prototype.hasOwnProperty.call(item, 'fee_due_date') && !item.benefit_name) {
+    return 'cancelled_card'
+  }
+  return 'benefit'
+}
+
+function formatNotificationItemTitle(item) {
+  const type = getNotificationItemType(item)
+  const cardName = item?.card_name || 'Card'
+  if (type === 'cancelled_card') {
+    return item?.account_name
+      ? `Cancelled card – ${cardName} (${item.account_name})`
+      : `Cancelled card – ${cardName}`
+  }
+  const benefitName = item?.benefit_name || 'Benefit'
+  return `${benefitName} (${cardName})`
+}
+
+function formatNotificationItemDetail(item) {
+  const type = getNotificationItemType(item)
+  if (type === 'cancelled_card') {
+    const dueDisplay = formatNotificationDate(item?.fee_due_date)
+    const days = typeof item?.days_until_due === 'number' ? item.days_until_due : null
+    if (days === null) {
+      return dueDisplay ? `Annual fee due ${dueDisplay}` : ''
+    }
+    if (days > 0) {
+      const plural = days === 1 ? '' : 's'
+      return dueDisplay
+        ? `Annual fee due in ${days} day${plural} (${dueDisplay})`
+        : `Annual fee due in ${days} day${plural}`
+    }
+    if (days === 0) {
+      return dueDisplay ? `Annual fee due today (${dueDisplay})` : 'Annual fee due today'
+    }
+    const overdue = Math.abs(days)
+    const plural = overdue === 1 ? '' : 's'
+    return dueDisplay
+      ? `Annual fee overdue by ${overdue} day${plural} (${dueDisplay})`
+      : `Annual fee overdue by ${overdue} day${plural}`
+  }
+  if (item?.expiration_date) {
+    return `Expires ${formatNotificationDate(item.expiration_date)}`
+  }
+  return ''
+}
+
+function formatNotificationItemKey(category, item) {
+  const type = getNotificationItemType(item)
+  if (type === 'cancelled_card') {
+    return `${category}-${item?.card_name || 'card'}-${item?.fee_due_date || 'due'}`
+  }
+  return `${category}-${item?.card_name || 'card'}-${item?.benefit_name || 'benefit'}-${
+    item?.expiration_date || 'none'
+  }`
+}
+
 function formatNotificationTimestamp(value) {
   if (!value) {
     return ''
@@ -761,6 +826,7 @@ function normaliseCard(card) {
     year_tracking_mode:
       card.year_tracking_mode === 'anniversary' ? 'anniversary' : 'calendar'
   }
+  normalized.is_cancelled = Boolean(card.is_cancelled)
   if (Array.isArray(card.benefits)) {
     normalized.benefits = card.benefits.map((benefit) => ({
       ...benefit,
@@ -982,9 +1048,36 @@ const editCardModal = reactive({
     account_name: '',
     annual_fee: '',
     fee_due_date: '',
-    year_tracking_mode: 'calendar'
+    year_tracking_mode: 'calendar',
+    is_cancelled: false
   }
 })
+
+const exportTemplateModal = reactive({
+  open: false,
+  cardId: null,
+  card: null,
+  loading: false,
+  error: '',
+  success: '',
+  form: {
+    card_type: '',
+    company_name: '',
+    annual_fee: '',
+    slug: '',
+    override_existing: false,
+    override_slug: ''
+  }
+})
+
+watch(
+  () => exportTemplateModal.form.override_existing,
+  (value) => {
+    if (!value) {
+      exportTemplateModal.form.override_slug = ''
+    }
+  }
+)
 
 const cardHistoryModal = reactive({
   open: false,
@@ -1710,6 +1803,7 @@ function handleEditCard(card) {
   editCardModal.form.annual_fee = card.annual_fee.toString()
   editCardModal.form.fee_due_date = card.fee_due_date
   editCardModal.form.year_tracking_mode = card.year_tracking_mode || 'calendar'
+  editCardModal.form.is_cancelled = Boolean(card.is_cancelled)
 }
 
 function closeEditCardModal() {
@@ -1722,6 +1816,91 @@ function closeEditCardModal() {
   editCardModal.form.annual_fee = ''
   editCardModal.form.fee_due_date = ''
   editCardModal.form.year_tracking_mode = 'calendar'
+  editCardModal.form.is_cancelled = false
+}
+
+function resetExportTemplateModal() {
+  exportTemplateModal.cardId = null
+  exportTemplateModal.card = null
+  exportTemplateModal.loading = false
+  exportTemplateModal.error = ''
+  exportTemplateModal.success = ''
+  exportTemplateModal.form.card_type = ''
+  exportTemplateModal.form.company_name = ''
+  exportTemplateModal.form.annual_fee = ''
+  exportTemplateModal.form.slug = ''
+  exportTemplateModal.form.override_existing = false
+  exportTemplateModal.form.override_slug = ''
+}
+
+function handleExportTemplate(card) {
+  resetExportTemplateModal()
+  exportTemplateModal.open = true
+  exportTemplateModal.cardId = card.id
+  exportTemplateModal.card = card
+  exportTemplateModal.form.card_type = card.card_name || ''
+  exportTemplateModal.form.company_name = card.company_name || ''
+  exportTemplateModal.form.annual_fee = Number(card.annual_fee || 0).toString()
+}
+
+function closeExportTemplateModal() {
+  exportTemplateModal.open = false
+  resetExportTemplateModal()
+}
+
+async function submitExportTemplate() {
+  if (!exportTemplateModal.cardId) {
+    return
+  }
+  exportTemplateModal.error = ''
+  exportTemplateModal.success = ''
+  const cardType = exportTemplateModal.form.card_type.trim()
+  const company = exportTemplateModal.form.company_name.trim()
+  const slug = exportTemplateModal.form.slug.trim()
+  const overrideExisting = Boolean(exportTemplateModal.form.override_existing)
+  if (!cardType || !company) {
+    exportTemplateModal.error = 'Provide a template name and company.'
+    return
+  }
+  const feeInput = (exportTemplateModal.form.annual_fee || '').toString().trim()
+  const parsedFee = Number(feeInput || 0)
+  if (Number.isNaN(parsedFee) || parsedFee < 0) {
+    exportTemplateModal.error = 'Enter a valid annual fee that is zero or greater.'
+    return
+  }
+  const payload = {
+    card_type: cardType,
+    company_name: company,
+    annual_fee: parsedFee,
+    override_existing: overrideExisting
+  }
+  if (slug) {
+    payload.slug = slug
+  }
+  if (overrideExisting) {
+    const overrideSlug = exportTemplateModal.form.override_slug
+    if (!overrideSlug) {
+      exportTemplateModal.error = 'Select the template you want to replace.'
+      return
+    }
+    payload.override_slug = overrideSlug
+  }
+  exportTemplateModal.loading = true
+  try {
+    const response = await apiClient.post(
+      `/api/cards/${exportTemplateModal.cardId}/export-template`,
+      payload
+    )
+    exportTemplateModal.success = `Template saved as ${response.data?.slug || 'template'}.`
+    await loadPreconfiguredCards()
+  } catch (err) {
+    exportTemplateModal.error = extractErrorMessage(
+      err,
+      'Unable to export this card as a template.'
+    )
+  } finally {
+    exportTemplateModal.loading = false
+  }
 }
 
 async function submitEditCard() {
@@ -1752,7 +1931,8 @@ async function submitEditCard() {
       account_name: editCardModal.form.account_name,
       annual_fee: Number(editCardModal.form.annual_fee || 0),
       fee_due_date: editCardModal.form.fee_due_date,
-      year_tracking_mode: editCardModal.form.year_tracking_mode
+      year_tracking_mode: editCardModal.form.year_tracking_mode,
+      is_cancelled: Boolean(editCardModal.form.is_cancelled)
     }
     await apiClient.put(`/api/cards/${editCardModal.cardId}`, payload)
     await loadCards()
@@ -2377,6 +2557,7 @@ onMounted(async () => {
               @edit-card="handleEditCard"
               @view-card-history="handleViewCardHistory"
               @view-benefit-windows="handleViewBenefitWindows"
+              @export-template="handleExportTemplate"
             />
           </div>
         </section>
@@ -2547,11 +2728,11 @@ onMounted(async () => {
                   <ul>
                     <li
                       v-for="item in items"
-                      :key="`${category}-${item.card_name}-${item.benefit_name}-${item.expiration_date || 'none'}`"
+                      :key="formatNotificationItemKey(category, item)"
                     >
-                      {{ item.benefit_name }} ({{ item.card_name }})
-                      <span v-if="item.expiration_date">
-                        – Expires {{ formatNotificationDate(item.expiration_date) }}
+                      {{ formatNotificationItemTitle(item) }}
+                      <span v-if="formatNotificationItemDetail(item)">
+                        – {{ formatNotificationItemDetail(item) }}
                       </span>
                     </li>
                   </ul>
@@ -2593,11 +2774,11 @@ onMounted(async () => {
                   <ul>
                     <li
                       v-for="item in items"
-                      :key="`${category}-${item.card_name}-${item.benefit_name}-${item.expiration_date || 'none'}`"
+                      :key="formatNotificationItemKey(category, item)"
                     >
-                      {{ item.benefit_name }} ({{ item.card_name }})
-                      <span v-if="item.expiration_date">
-                        – Expires {{ formatNotificationDate(item.expiration_date) }}
+                      {{ formatNotificationItemTitle(item) }}
+                      <span v-if="formatNotificationItemDetail(item)">
+                        – {{ formatNotificationItemDetail(item) }}
                       </span>
                     </li>
                   </ul>
@@ -2964,9 +3145,80 @@ onMounted(async () => {
           <span>Align with AF year</span>
         </label>
       </div>
+      <label class="checkbox-option">
+        <input v-model="editCardModal.form.is_cancelled" type="checkbox" />
+        <span>Cancel card</span>
+      </label>
       <div class="modal-actions">
         <button class="primary-button secondary" type="button" @click="closeEditCardModal">Cancel</button>
         <button class="primary-button" type="submit">Save changes</button>
+      </div>
+    </form>
+  </BaseModal>
+
+  <BaseModal
+    :open="exportTemplateModal.open"
+    title="Export as template"
+    @close="closeExportTemplateModal"
+  >
+    <form @submit.prevent="submitExportTemplate">
+      <p class="helper-text subtle-text">
+        Copy this card's benefits into a reusable template. History entries are excluded.
+      </p>
+      <div class="field-group">
+        <input
+          v-model="exportTemplateModal.form.card_type"
+          type="text"
+          placeholder="Template card name"
+          required
+        />
+        <input
+          v-model="exportTemplateModal.form.company_name"
+          type="text"
+          placeholder="Company name"
+          required
+        />
+      </div>
+      <div class="field-group">
+        <input
+          v-model="exportTemplateModal.form.annual_fee"
+          type="number"
+          min="0"
+          step="0.01"
+          placeholder="Annual fee"
+          required
+        />
+        <input
+          v-model="exportTemplateModal.form.slug"
+          type="text"
+          placeholder="Slug (optional)"
+        />
+      </div>
+      <label class="checkbox-option">
+        <input v-model="exportTemplateModal.form.override_existing" type="checkbox" />
+        <span>Override an existing template</span>
+      </label>
+      <div v-if="exportTemplateModal.form.override_existing" class="field-group">
+        <select v-model="exportTemplateModal.form.override_slug" required>
+          <option value="" disabled>Select a template to replace</option>
+          <option v-for="card in preconfiguredCards" :key="card.slug" :value="card.slug">
+            {{ card.card_type }} ({{ card.slug }})
+          </option>
+        </select>
+      </div>
+      <p v-if="exportTemplateModal.error" class="helper-text error-text">
+        {{ exportTemplateModal.error }}
+      </p>
+      <p v-else-if="exportTemplateModal.success" class="helper-text success-text">
+        {{ exportTemplateModal.success }}
+      </p>
+      <div class="modal-actions">
+        <button class="primary-button secondary" type="button" @click="closeExportTemplateModal">
+          Cancel
+        </button>
+        <button class="primary-button" type="submit" :disabled="exportTemplateModal.loading">
+          {{ exportTemplateModal.loading ? 'Saving…' : 'Save template' }}
+        </button>
       </div>
     </form>
   </BaseModal>

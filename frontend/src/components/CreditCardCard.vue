@@ -26,7 +26,8 @@ const emit = defineEmits([
   'update-benefit',
   'edit-card',
   'view-card-history',
-  'view-benefit-windows'
+  'view-benefit-windows',
+  'export-template'
 ])
 
 const benefitModalOpen = ref(false)
@@ -491,6 +492,10 @@ function handleCardEdit() {
 function handleCardDelete() {
   emit('delete-card', props.card.id)
 }
+
+function handleCardExport() {
+  emit('export-template', props.card)
+}
 </script>
 
 <template>
@@ -504,7 +509,10 @@ function handleCardDelete() {
           <span>•</span>
           <span>{{ card.account_name }}</span>
         </div>
-        <div class="card-due">Fee due {{ new Date(card.fee_due_date).toLocaleDateString() }}</div>
+        <div class="card-due">
+          Fee due {{ new Date(card.fee_due_date).toLocaleDateString() }}
+          <span v-if="card.is_cancelled" class="card-status card-status--cancelled">Cancelled</span>
+        </div>
       </div>
       <div class="card-header__meta">
         <div class="card-cycle">
@@ -524,6 +532,13 @@ function handleCardDelete() {
               <path d="M15.58 2.42a1.5 1.5 0 0 0-2.12 0l-9 9V17h5.59l9-9a1.5 1.5 0 0 0 0-2.12zM7 15H5v-2l6.88-6.88 2 2z" />
             </svg>
             <span class="sr-only">Edit card</span>
+          </button>
+          <button class="icon-button ghost" type="button" @click="handleCardExport" title="Export as template">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+              <rect x="6" y="5" width="9" height="11" rx="1.6" />
+              <path d="M4 11V6.6A1.6 1.6 0 0 1 5.6 5H11" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <span class="sr-only">Export as template</span>
           </button>
           <button class="icon-button danger" type="button" @click="handleCardDelete" title="Remove card">
             <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -703,6 +718,25 @@ function handleCardDelete() {
 .card-due {
   font-size: 0.85rem;
   color: #64748b;
+}
+
+.card-status {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+
+.card-status--cancelled {
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
+  border-color: rgba(239, 68, 68, 0.32);
 }
 
 .card-header__meta {

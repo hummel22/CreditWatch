@@ -14,8 +14,14 @@ from . import crud
 from .models import Benefit, BenefitType, CreditCard, NotificationSettings, YearTrackingMode
 from .schemas import (
     NotificationBenefitSummary,
+    NotificationCancelledCardSummary,
     NotificationDispatchResult,
 )
+
+
+NotificationCategoryMap = Dict[
+    str, List[NotificationBenefitSummary | NotificationCancelledCardSummary]
+]
 
 logger = logging.getLogger("creditwatch.notifications")
 
@@ -140,8 +146,8 @@ class NotificationService:
 
     def _collect_categories(
         self, session: Session, target: date
-    ) -> Dict[str, List[NotificationBenefitSummary]]:
-        categories: Dict[str, List[NotificationBenefitSummary]] = {}
+    ) -> NotificationCategoryMap:
+        categories: NotificationCategoryMap = {}
         if target.day == 1:
             start_of_month = target.replace(day=1)
             end_of_month = date(
@@ -158,6 +164,9 @@ class NotificationService:
         today = self._fetch_benefits(session, target, target)
         if today:
             categories["expiring_today"] = today
+        cancelled_cards = self._collect_cancelled_cards(session, target)
+        if cancelled_cards:
+            categories["cancelled_cards"] = cancelled_cards
         return categories
 
     def _fetch_benefits(
@@ -187,6 +196,34 @@ class NotificationService:
             )
         return results
 
+    def _collect_cancelled_cards(
+        self, session: Session, target: date
+    ) -> List[NotificationCancelledCardSummary]:
+        statement = (
+            select(CreditCard)
+            .where(CreditCard.is_cancelled.is_(True))
+            .order_by(CreditCard.fee_due_date, CreditCard.card_name)
+        )
+        summaries: List[NotificationCancelledCardSummary] = []
+        for card in session.exec(statement).all():
+            due_date = card.fee_due_date
+            if not isinstance(due_date, date):
+                continue
+            reminder_start = due_date - timedelta(days=15)
+            if target < reminder_start:
+                continue
+            days_until_due = (due_date - target).days
+            summaries.append(
+                NotificationCancelledCardSummary(
+                    card_name=card.card_name,
+                    account_name=card.account_name,
+                    company_name=card.company_name,
+                    fee_due_date=due_date,
+                    days_until_due=days_until_due,
+                )
+            )
+        return summaries
+
     def _resolve_display_expiration(
         self, benefit: Benefit, card: CreditCard, expiration: date
     ) -> date:
@@ -197,37 +234,63 @@ class NotificationService:
                 return expiration.replace(day=last_day)
         return expiration
 
-    def _render_daily_body(
-        self, target: date, categories: Dict[str, List[NotificationBenefitSummary]]
-    ) -> str:
+    def _render_daily_body(self, target: date, categories: NotificationCategoryMap) -> str:
         sections: List[str] = []
         month_section = categories.get("expiring_this_month")
         if month_section:
             sections.append(
-                "Benefits expiring this month:\n" + "\n".join(self._format_line(item) for item in month_section)
+                "Benefits expiring this month:\n"
+                + "\n".join(self._format_benefit_line(item) for item in month_section)
             )
         ten_day_section = categories.get("expiring_in_10_days")
         if ten_day_section:
             sections.append(
-                "Benefits expiring in 10 days:\n" + "\n".join(self._format_line(item) for item in ten_day_section)
+                "Benefits expiring in 10 days:\n"
+                + "\n".join(self._format_benefit_line(item) for item in ten_day_section)
             )
         today_section = categories.get("expiring_today")
         if today_section:
             sections.append(
-                "Benefits expiring today:\n" + "\n".join(self._format_line(item) for item in today_section)
+                "Benefits expiring today:\n"
+                + "\n".join(self._format_benefit_line(item) for item in today_section)
+            )
+        cancelled_section = categories.get("cancelled_cards")
+        if cancelled_section:
+            sections.append(
+                "Cancelled cards approaching annual fees:\n"
+                + "\n".join(self._format_cancelled_line(item) for item in cancelled_section)
             )
         return "\n\n".join(sections)
 
-    def _format_line(self, summary: NotificationBenefitSummary) -> str:
+    def _format_benefit_line(self, summary: NotificationBenefitSummary) -> str:
         return f"- {summary.benefit_name} ({summary.card_name}) – {summary.expiration_date:%b %d}" \
             if summary.expiration_date else f"- {summary.benefit_name} ({summary.card_name})"
+
+    def _format_cancelled_line(self, summary: NotificationCancelledCardSummary) -> str:
+        base = f"- {summary.card_name}"
+        if summary.account_name:
+            base += f" ({summary.account_name})"
+        if summary.days_until_due > 0:
+            timing = f"in {summary.days_until_due} day"
+            if summary.days_until_due != 1:
+                timing += "s"
+            suffix = f"Annual fee due {summary.fee_due_date:%b %d} ({timing})"
+        elif summary.days_until_due == 0:
+            suffix = f"Annual fee due today ({summary.fee_due_date:%b %d})"
+        else:
+            overdue = abs(summary.days_until_due)
+            timing = f"{overdue} day"
+            if overdue != 1:
+                timing += "s"
+            suffix = f"Annual fee overdue by {timing} ({summary.fee_due_date:%b %d})"
+        return f"{base} – {suffix}"
 
     async def _send_payload(
         self,
         settings: NotificationSettings | None,
         title: str,
         message: str,
-        categories: Dict[str, List[NotificationBenefitSummary]],
+        categories: NotificationCategoryMap,
         *,
         target_override: Optional[str] = None,
     ) -> NotificationDispatchResult:

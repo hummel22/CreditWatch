@@ -1326,6 +1326,7 @@ def build_benefit_read(
         expiration_date=expiration_date,
         is_used=benefit.is_used,
         used_at=benefit.used_at,
+        exclude_from_benefits_page=benefit.exclude_from_benefits_page,
         redemption_total=total,
         redemption_count=count,
         remaining_value=remaining,

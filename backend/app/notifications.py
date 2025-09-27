@@ -11,7 +11,7 @@ import httpx
 from sqlmodel import Session, select
 
 from . import crud
-from .models import Benefit, CreditCard, NotificationSettings
+from .models import Benefit, BenefitType, CreditCard, NotificationSettings, YearTrackingMode
 from .schemas import (
     NotificationBenefitSummary,
     NotificationDispatchResult,
@@ -167,20 +167,35 @@ class NotificationService:
             select(Benefit, CreditCard)
             .join(CreditCard, CreditCard.id == Benefit.credit_card_id)
             .where(Benefit.expiration_date.is_not(None))
+            .where(Benefit.type != BenefitType.cumulative)
             .where(Benefit.expiration_date >= start)
             .where(Benefit.expiration_date <= end)
             .order_by(Benefit.expiration_date, CreditCard.card_name, Benefit.name)
         )
         results: List[NotificationBenefitSummary] = []
         for benefit, card in session.exec(statement).all():
+            expiration_raw = benefit.expiration_date
+            if expiration_raw is None:
+                continue
+            expiration = self._resolve_display_expiration(benefit, card, expiration_raw)
             results.append(
                 NotificationBenefitSummary(
                     card_name=card.card_name,
                     benefit_name=benefit.name,
-                    expiration_date=benefit.expiration_date,
+                    expiration_date=expiration,
                 )
             )
         return results
+
+    def _resolve_display_expiration(
+        self, benefit: Benefit, card: CreditCard, expiration: date
+    ) -> date:
+        tracking_mode = benefit.window_tracking_mode or card.year_tracking_mode
+        if tracking_mode == YearTrackingMode.calendar:
+            last_day = calendar.monthrange(expiration.year, expiration.month)[1]
+            if expiration.day != last_day:
+                return expiration.replace(day=last_day)
+        return expiration
 
     def _render_daily_body(
         self, target: date, categories: Dict[str, List[NotificationBenefitSummary]]

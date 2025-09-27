@@ -762,7 +762,10 @@ function normaliseCard(card) {
       card.year_tracking_mode === 'anniversary' ? 'anniversary' : 'calendar'
   }
   if (Array.isArray(card.benefits)) {
-    normalized.benefits = card.benefits.map((benefit) => ({ ...benefit }))
+    normalized.benefits = card.benefits.map((benefit) => ({
+      ...benefit,
+      exclude_from_benefits_page: Boolean(benefit.exclude_from_benefits_page)
+    }))
   }
   return normalized
 }
@@ -793,6 +796,7 @@ function createAdminBenefit(overrides = {}) {
     useCustomValues: false,
     window_values: [],
     window_tracking_mode: '',
+    exclude_from_benefits_page: false,
     ...overrides
   }
 }
@@ -952,7 +956,8 @@ const redemptionModal = reactive({
   card: null,
   label: '',
   amount: '',
-  occurred_on: ''
+  occurred_on: '',
+  markComplete: false
 })
 
 const historyModal = reactive({
@@ -1019,6 +1024,9 @@ const benefitsCollection = computed(() => {
       continue
     }
     for (const benefit of card.benefits) {
+      if (benefit.exclude_from_benefits_page) {
+        continue
+      }
       entries.push({ card, benefit })
     }
   }
@@ -1203,7 +1211,8 @@ function openAdminEditModal(card) {
       window_values: Array.isArray(benefit.window_values)
         ? benefit.window_values.map((value) => value.toString())
         : [],
-      window_tracking_mode: benefit.window_tracking_mode || ''
+      window_tracking_mode: benefit.window_tracking_mode || '',
+      exclude_from_benefits_page: Boolean(benefit.exclude_from_benefits_page)
     })
   )
   if (!adminModal.form.benefits.length) {
@@ -1299,6 +1308,9 @@ async function submitAdminCard() {
         } else {
           base.window_tracking_mode = null
         }
+        base.exclude_from_benefits_page = Boolean(
+          benefit.exclude_from_benefits_page
+        )
         return base
       })
     }
@@ -1365,6 +1377,9 @@ async function handleCreateCard() {
           frequency: benefit.frequency,
           type: benefit.type,
           expiration_date: null
+        }
+        if (benefit.exclude_from_benefits_page) {
+          benefitPayload.exclude_from_benefits_page = true
         }
         if (benefit.type === 'cumulative') {
           if (benefit.expected_value != null) {
@@ -1546,6 +1561,8 @@ function handleAddRedemption(payload) {
   const defaultDate = resolveRedemptionDateForWindow(windowContext)
   redemptionModal.occurred_on = formatDateInput(defaultDate)
   redemptionModal.card = card
+  redemptionModal.markComplete =
+    trackedBenefit.type === 'cumulative' ? Boolean(trackedBenefit.is_used) : false
 }
 
 function closeRedemptionModal() {
@@ -1559,6 +1576,7 @@ function closeRedemptionModal() {
   redemptionModal.label = ''
   redemptionModal.amount = ''
   redemptionModal.occurred_on = ''
+  redemptionModal.markComplete = false
 }
 
 async function submitRedemption() {
@@ -1570,6 +1588,11 @@ async function submitRedemption() {
     if (!Number.isFinite(amount) || amount <= 0) {
       return
     }
+    const isCumulative = redemptionModal.benefit?.type === 'cumulative'
+    const markComplete = isCumulative ? Boolean(redemptionModal.markComplete) : null
+    const previousCompletion = isCumulative
+      ? Boolean(redemptionModal.benefit?.is_used)
+      : null
     const body = {
       label: redemptionModal.label || 'Redemption',
       amount,
@@ -1579,6 +1602,14 @@ async function submitRedemption() {
       await apiClient.put(`/api/redemptions/${redemptionModal.redemptionId}`, body)
     } else {
       await apiClient.post(`/api/benefits/${redemptionModal.benefitId}/redemptions`, body)
+    }
+    if (markComplete !== null && markComplete !== previousCompletion) {
+      await apiClient.put(`/api/benefits/${redemptionModal.benefitId}`, {
+        is_used: markComplete
+      })
+      if (redemptionModal.benefit) {
+        redemptionModal.benefit.is_used = markComplete
+      }
     }
     await loadCards()
     await refreshOpenModals()
@@ -1607,6 +1638,8 @@ function handleEditRedemption(entry) {
   redemptionModal.label = entry.label
   redemptionModal.amount = Number(entry.amount).toString()
   redemptionModal.occurred_on = entry.occurred_on
+  redemptionModal.markComplete =
+    benefit.type === 'cumulative' ? Boolean(benefit.is_used) : false
 }
 
 async function handleDeleteRedemption(entry) {
@@ -2965,6 +2998,13 @@ onMounted(async () => {
         />
         <input v-model="redemptionModal.occurred_on" type="date" required />
       </div>
+      <label
+        v-if="redemptionModal.benefit?.type === 'cumulative'"
+        class="checkbox-option redemption-complete-toggle"
+      >
+        <input v-model="redemptionModal.markComplete" type="checkbox" />
+        <span>Mark benefit complete for this cycle</span>
+      </label>
       <div class="modal-actions">
         <button class="primary-button secondary" type="button" @click="closeRedemptionModal">
           Cancel
@@ -3295,6 +3335,10 @@ onMounted(async () => {
               />
             </label>
           </div>
+          <label class="checkbox-option admin-benefit-exclude">
+            <input v-model="benefit.exclude_from_benefits_page" type="checkbox" />
+            <span>Hide from benefits overview</span>
+          </label>
           <p class="helper-text">{{ benefitTypeDescriptions[benefit.type] }}</p>
           <div class="admin-benefit-card__footer">
             <button

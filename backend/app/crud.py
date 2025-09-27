@@ -135,9 +135,13 @@ def update_benefit(session: Session, benefit: Benefit, payload: BenefitUpdate) -
         benefit.window_values = None
         benefit.window_tracking_mode = None
 
-    if is_used is not None and benefit.type == BenefitType.standard:
-        benefit.is_used = is_used
-        benefit.used_at = datetime.utcnow() if is_used else None
+    if is_used is not None:
+        if benefit.type == BenefitType.standard:
+            benefit.is_used = is_used
+            benefit.used_at = datetime.utcnow() if is_used else None
+        elif benefit.type == BenefitType.cumulative:
+            benefit.is_used = is_used
+            benefit.used_at = datetime.utcnow() if is_used else None
 
     session.add(benefit)
     session.commit()

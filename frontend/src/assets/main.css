@@ -620,6 +620,14 @@ textarea {
   accent-color: #6366f1;
 }
 
+.redemption-complete-toggle {
+  margin-top: 0.75rem;
+}
+
+.admin-benefit-exclude {
+  margin-top: 0.75rem;
+}
+
 .admin-window-values {
   margin-top: 0.75rem;
   display: grid;

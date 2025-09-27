@@ -68,18 +68,6 @@ const frequencyLabel = computed(() => {
 
 const currentWindowLabel = computed(() => props.benefit.current_window_label || '')
 
-const cardLabel = computed(() => {
-  if (!props.cardContext) {
-    return ''
-  }
-  const name = props.cardContext.name || props.cardContext.card_name || ''
-  const company = props.cardContext.company || props.cardContext.company_name || ''
-  if (name && company) {
-    return `${name} · ${company}`
-  }
-  return name || company || ''
-})
-
 function resolveCalendarExpiration(benefit, cardContext) {
   const frequency = benefit?.frequency
   const trackingMode =
@@ -273,7 +261,6 @@ const standardUsage = computed(() => {
     <header class="benefit-header">
       <div class="benefit-header__primary">
         <div class="benefit-name">{{ benefit.name }}</div>
-        <div v-if="cardLabel" class="benefit-card__context">{{ cardLabel }}</div>
         <div class="benefit-meta-row">
           <div class="benefit-meta">
             <div class="benefit-meta-line">
@@ -287,7 +274,7 @@ const standardUsage = computed(() => {
               <span>{{ statusTag.label }}</span>
             </div>
             <span class="benefit-year-total">
-              Total: <strong>${{ annualRedeemed.toFixed(2) }}</strong>
+              Total: <strong class="benefit-amount">${{ annualRedeemed.toFixed(2) }}</strong>
             </span>
           </div>
         </div>
@@ -437,10 +424,10 @@ const standardUsage = computed(() => {
 
     <footer class="benefit-footer">
       <div>
-        <strong v-if="benefit.type !== 'cumulative'">
+        <strong v-if="benefit.type !== 'cumulative'" class="benefit-amount">
           ${{ windowValueLabel }}
         </strong>
-        <strong v-else>
+        <strong v-else class="benefit-amount">
           <template v-if="benefit.expected_value != null">
             ${{ Number(benefit.expected_value).toFixed(2) }}
           </template>
@@ -529,12 +516,6 @@ const standardUsage = computed(() => {
   overflow-wrap: anywhere;
 }
 
-.benefit-card__context {
-  font-size: 0.72rem;
-  color: #64748b;
-  font-weight: 500;
-}
-
 .benefit-meta-row {
   display: flex;
   align-items: flex-start;
@@ -562,9 +543,8 @@ const standardUsage = computed(() => {
   font-weight: 500;
 }
 
-.benefit-year-total strong {
+.benefit-year-total .benefit-amount {
   font-weight: 600;
-  color: #0f172a;
 }
 
 .benefit-meta {
@@ -686,9 +666,9 @@ const standardUsage = computed(() => {
 }
 
 .benefit-usage-summary__value {
-  font-size: 1rem;
-  font-weight: 700;
-  color: #0f172a;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #334155;
 }
 
 .benefit-usage-summary__status {
@@ -700,6 +680,12 @@ const standardUsage = computed(() => {
 
 strong {
   font-weight: 700;
-  color: #0f172a;
+  color: inherit;
+}
+
+.benefit-amount {
+  color: #334155;
+  font-weight: 600;
+  font-size: 0.9em;
 }
 </style>

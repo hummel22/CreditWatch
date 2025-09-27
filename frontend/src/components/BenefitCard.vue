@@ -86,6 +86,17 @@ const expirationLabel = computed(() => {
   }).format(new Date(props.benefit.expiration_date))
 })
 
+const missedWindowValue = computed(() => {
+  if (!['standard', 'incremental'].includes(props.benefit.type)) {
+    return 0
+  }
+  const raw = Number(props.benefit.missed_window_value ?? 0)
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return 0
+  }
+  return raw
+})
+
 const incrementalProgress = computed(() => {
   if (props.benefit.type !== 'incremental') {
     return null
@@ -94,19 +105,30 @@ const incrementalProgress = computed(() => {
   const target = Number(
     props.benefit.cycle_target_value ?? props.benefit.value ?? 0
   )
-  const remaining = props.benefit.remaining_value ?? Math.max(target - used, 0)
-  const percent = target > 0 ? Math.min((used / target) * 100, 100) : used > 0 ? 100 : 0
+  const expired = missedWindowValue.value
+  const usedPercent = target > 0 ? Math.min((used / target) * 100, 100) : used > 0 ? 100 : 0
+  const expiredPercent = target > 0
+    ? Math.min((expired / target) * 100, Math.max(100 - usedPercent, 0))
+    : 0
+  const remaining = Math.max(target - used - expired, 0)
   const statusText = target <= 0
     ? `${used > 0 ? `$${used.toFixed(2)} logged` : 'No goal set'}`
     : remaining <= 0
       ? 'Complete'
       : `$${remaining.toFixed(2)} remaining`
+  const accessibleParts = [`Used $${used.toFixed(2)} of $${target.toFixed(2)}`]
+  if (expired > 0) {
+    accessibleParts.push(`Expired $${expired.toFixed(2)}`)
+  }
   return {
     used,
     target,
     remaining,
-    percent,
-    statusText
+    usedPercent,
+    expiredPercent,
+    expired,
+    statusText,
+    accessibleLabel: accessibleParts.join(' · ')
   }
 })
 
@@ -152,6 +174,21 @@ const windowValueLabel = computed(() => {
 })
 
 const annualRedeemed = computed(() => Number(props.benefit.cycle_redemption_total ?? 0))
+
+const standardUsage = computed(() => {
+  if (props.benefit.type !== 'standard') {
+    return null
+  }
+  const baseValueRaw =
+    currentWindowValue.value ?? props.benefit.current_window_value ?? props.benefit.value ?? 0
+  const baseValue = Number(baseValueRaw) || 0
+  const used = props.benefit.is_used ? baseValue : 0
+  const expired = missedWindowValue.value
+  return {
+    used,
+    expired
+  }
+})
 </script>
 
 <template>
@@ -219,23 +256,47 @@ const annualRedeemed = computed(() => Number(props.benefit.cycle_redemption_tota
         v-if="incrementalProgress"
         class="benefit-progress-chart"
         role="img"
-        :aria-label="`Used $${incrementalProgress.used.toFixed(2)} of $${incrementalProgress.target.toFixed(2)}`"
+        :aria-label="incrementalProgress.accessibleLabel"
       >
         <div class="benefit-progress-chart__track">
           <div
-            class="benefit-progress-chart__fill"
-            :style="{ width: `${incrementalProgress.percent}%` }"
+            class="benefit-progress-chart__segment benefit-progress-chart__segment--used"
+            :style="{ width: `${incrementalProgress.usedPercent}%` }"
+            aria-hidden="true"
+          ></div>
+          <div
+            v-if="incrementalProgress.expiredPercent > 0"
+            class="benefit-progress-chart__segment benefit-progress-chart__segment--expired"
+            :style="{ width: `${incrementalProgress.expiredPercent}%` }"
             aria-hidden="true"
           ></div>
         </div>
         <div class="benefit-progress-chart__legend">
-          <span class="benefit-progress-chart__value">
-            Used ${{ incrementalProgress.used.toFixed(2) }} of ${{ incrementalProgress.target.toFixed(2) }}
-          </span>
+          <div class="benefit-progress-chart__usage">
+            <span class="benefit-progress-chart__value">
+              Used ${{ incrementalProgress.used.toFixed(2) }} of ${{ incrementalProgress.target.toFixed(2) }}
+            </span>
+            <span
+              v-if="incrementalProgress.expired > 0"
+              class="benefit-expired-text"
+            >
+              Expired ${{ incrementalProgress.expired.toFixed(2) }}
+            </span>
+          </div>
           <span class="benefit-progress-chart__status">{{ incrementalProgress.statusText }}</span>
         </div>
       </div>
-      <p v-else class="benefit-progress">{{ redemptionSummary }}</p>
+      <template v-else>
+        <p class="benefit-progress">{{ redemptionSummary }}</p>
+        <div v-if="standardUsage" class="benefit-usage">
+          <span class="benefit-usage__value">
+            Used ${{ standardUsage.used.toFixed(2) }}
+          </span>
+          <span v-if="standardUsage.expired > 0" class="benefit-expired-text">
+            Expired ${{ standardUsage.expired.toFixed(2) }}
+          </span>
+        </div>
+      </template>
     </section>
 
     <footer class="benefit-footer">
@@ -425,13 +486,21 @@ const annualRedeemed = computed(() => Number(props.benefit.cycle_redemption_tota
   background: rgba(148, 163, 184, 0.25);
   border-radius: 999px;
   overflow: hidden;
+  display: flex;
 }
 
-.benefit-progress-chart__fill {
+.benefit-progress-chart__segment {
   height: 100%;
-  background: linear-gradient(90deg, #38bdf8, #6366f1);
-  border-radius: 999px;
+  flex: 0 0 auto;
   transition: width 0.3s ease;
+}
+
+.benefit-progress-chart__segment--used {
+  background: linear-gradient(90deg, #38bdf8, #6366f1);
+}
+
+.benefit-progress-chart__segment--expired {
+  background: linear-gradient(90deg, #fca5a5, #ef4444);
 }
 
 .benefit-progress-chart__legend {
@@ -440,10 +509,36 @@ const annualRedeemed = computed(() => Number(props.benefit.cycle_redemption_tota
   gap: 0.35rem;
   font-size: 0.8rem;
   color: #0f172a;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.benefit-progress-chart__usage {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
 }
 
 .benefit-progress-chart__status {
   color: #6366f1;
+}
+
+.benefit-usage {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.8rem;
+  color: #0f172a;
+  margin-top: 0.4rem;
+}
+
+.benefit-usage__value {
+  font-weight: 600;
+}
+
+.benefit-expired-text {
+  color: #ef4444;
+  font-weight: 600;
 }
 
 strong {

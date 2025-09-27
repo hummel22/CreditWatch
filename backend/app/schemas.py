@@ -121,6 +121,7 @@ class BenefitRead(BenefitBase):
     current_window_index: Optional[int] = Field(default=None, ge=1)
     cycle_window_count: Optional[int] = Field(default=None, ge=1)
     cycle_target_value: Optional[float] = Field(default=None, ge=0)
+    missed_window_value: float = Field(default=0, ge=0)
 
     model_config = ConfigDict(from_attributes=True)
 

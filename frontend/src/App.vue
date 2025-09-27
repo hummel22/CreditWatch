@@ -2984,6 +2984,7 @@ onMounted(async () => {
   >
     <div v-if="historyModal.loading" class="history-loading">Loading history...</div>
     <template v-else>
+      <h3 class="history-section-title">History</h3>
       <p v-if="historyModal.windowLabel" class="history-window-label">
         Current window: {{ historyModal.windowLabel }}
       </p>
@@ -3141,13 +3142,6 @@ onMounted(async () => {
               </svg>
               <span class="sr-only">Delete window</span>
             </button>
-            <button
-              class="primary-button small"
-              type="button"
-              @click="handleRedeemWindow(window)"
-            >
-              Redeem
-            </button>
           </div>
         </div>
         <p class="window-total">Total used: <strong>${{ window.total.toFixed(2) }}</strong></p>
@@ -3161,6 +3155,11 @@ onMounted(async () => {
           </li>
         </ul>
         <p v-else class="history-benefit-empty">No activity recorded.</p>
+        <div class="window-card__footer">
+          <button class="primary-button small" type="button" @click="handleRedeemWindow(window)">
+            Redeem
+          </button>
+        </div>
       </article>
     </div>
     <div v-if="benefitWindowsModal.deletedWindows.length" class="window-deleted">

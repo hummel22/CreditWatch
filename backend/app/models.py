@@ -54,6 +54,10 @@ class CreditCard(SQLModel, table=True):
         default=YearTrackingMode.calendar,
         description="How the card's history windows are calculated",
     )
+    is_cancelled: bool = Field(
+        default=False,
+        description="Whether the card has been cancelled and should trigger reminders",
+    )
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class Benefit(SQLModel, table=True):

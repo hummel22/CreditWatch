@@ -72,6 +72,7 @@ def _run_database_initialisation_steps() -> None:
     ensure_benefit_window_tracking_column()
     ensure_benefit_visibility_column()
     ensure_card_year_tracking_column()
+    ensure_card_cancelled_column()
 
 
 @contextmanager
@@ -233,6 +234,19 @@ def ensure_card_year_tracking_column() -> None:
         if "year_tracking_mode" not in existing_columns:
             connection.exec_driver_sql(
                 "ALTER TABLE creditcard ADD COLUMN year_tracking_mode VARCHAR NOT NULL DEFAULT 'calendar'"
+            )
+
+
+def ensure_card_cancelled_column() -> None:
+    """Ensure credit cards track whether they have been cancelled."""
+
+    with engine.connect() as connection:
+        existing_columns = {
+            row[1] for row in connection.exec_driver_sql("PRAGMA table_info(creditcard)")
+        }
+        if "is_cancelled" not in existing_columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE creditcard ADD COLUMN is_cancelled BOOLEAN NOT NULL DEFAULT 0"
             )
 
 

@@ -51,6 +51,7 @@ from .schemas import (
     BackupSettingsRead,
     BackupSettingsUpdate,
     BackupSettingsWrite,
+    CardTemplateExportRequest,
     CreditCardCreate,
     CreditCardUpdate,
     CreditCardWithBenefits,
@@ -61,6 +62,7 @@ from .schemas import (
     NotificationSettingsRead,
     NotificationSettingsUpdate,
     NotificationSettingsWrite,
+    PreconfiguredBenefitCreate,
     PreconfiguredCardRead,
     PreconfiguredCardWrite,
 )
@@ -509,6 +511,74 @@ def delete_card(card_id: int, session: Session = Depends(get_session)) -> Respon
 
 
 @app.post(
+    "/api/cards/{card_id}/export-template",
+    response_model=PreconfiguredCardRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def export_card_template(
+    card_id: int,
+    payload: CardTemplateExportRequest,
+    session: Session = Depends(get_session),
+) -> PreconfiguredCardRead:
+    card = require_card(session, card_id)
+    benefits = crud.list_benefits_for_card(session, card.id)
+    benefit_payloads: List[PreconfiguredBenefitCreate] = []
+    for benefit in benefits:
+        benefit_data: Dict[str, object] = {
+            "name": benefit.name,
+            "description": benefit.description,
+            "frequency": benefit.frequency,
+            "type": benefit.type,
+            "exclude_from_benefits_page": benefit.exclude_from_benefits_page,
+        }
+        if benefit.type == BenefitType.cumulative:
+            if benefit.expected_value is not None:
+                benefit_data["expected_value"] = benefit.expected_value
+        else:
+            benefit_data["value"] = benefit.value
+            if benefit.window_values:
+                benefit_data["window_values"] = benefit.window_values
+        if benefit.window_tracking_mode is not None:
+            benefit_data["window_tracking_mode"] = benefit.window_tracking_mode
+        benefit_payloads.append(PreconfiguredBenefitCreate(**benefit_data))
+
+    desired_card_type = payload.card_type or card.card_name
+    desired_company = payload.company_name or card.company_name
+    desired_fee = payload.annual_fee if payload.annual_fee is not None else card.annual_fee
+
+    target_slug = payload.override_slug if payload.override_existing else None
+    payload_slug = payload.slug or target_slug
+
+    template_payload = PreconfiguredCardWrite(
+        slug=payload_slug,
+        card_type=desired_card_type,
+        company_name=desired_company,
+        annual_fee=desired_fee,
+        benefits=benefit_payloads,
+    )
+
+    try:
+        if payload.override_existing:
+            if not payload.override_slug:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="An existing template slug is required when overriding a template.",
+                )
+            return update_preconfigured_card(payload.override_slug, template_payload)
+        return create_preconfigured_card(template_payload)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Preconfigured card not found.",
+        ) from exc
+    except FileExistsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A card with the provided slug already exists.",
+        ) from exc
+
+
+@app.post(
     "/api/cards/{card_id}/benefits",
     response_model=BenefitRead,
     status_code=status.HTTP_201_CREATED,
@@ -736,6 +806,7 @@ def build_card_response(session: Session, card: CreditCard) -> CreditCardWithBen
         annual_fee=card.annual_fee,
         fee_due_date=card.fee_due_date,
         year_tracking_mode=card.year_tracking_mode,
+        is_cancelled=card.is_cancelled,
         created_at=card.created_at,
         benefits=benefits,
         potential_value=potential_value,

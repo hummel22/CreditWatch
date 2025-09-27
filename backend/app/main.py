@@ -1081,7 +1081,7 @@ def build_benefit_read(
         if cycle_target_value is not None
         else (float(benefit.expected_value) if benefit.expected_value is not None else None)
     )
-    return BenefitRead(
+    benefit_read = BenefitRead(
         id=benefit.id,
         credit_card_id=benefit.credit_card_id,
         name=benefit.name,
@@ -1106,7 +1106,52 @@ def build_benefit_read(
         current_window_index=window_index,
         cycle_window_count=window_count,
         cycle_target_value=cycle_target,
+        missed_window_value=0.0,
     )
+
+    if benefit_read.type in (BenefitType.standard, BenefitType.incremental):
+        missed_potential = _calculate_missed_window_potential(benefit_read, cycle_value)
+        if missed_potential > 0:
+            benefit_read = benefit_read.model_copy(
+                update={"missed_window_value": missed_potential}
+            )
+
+    return benefit_read
+
+
+def _calculate_missed_window_potential(
+    benefit: BenefitRead, cycle_total: float
+) -> float:
+    """Estimate potential lost from expired windows without redemptions."""
+
+    window_index = getattr(benefit, "current_window_index", None)
+    window_count = getattr(benefit, "cycle_window_count", None)
+
+    if not window_index or window_index <= 1:
+        return 0.0
+
+    total_windows = window_count or window_index
+    if total_windows <= 1:
+        return 0.0
+
+    passed_windows = min(window_index - 1, total_windows)
+    if passed_windows <= 0:
+        return 0.0
+
+    window_values = list(getattr(benefit, "window_values", []) or [])
+    default_value = float(getattr(benefit, "value", 0) or 0)
+
+    expected = 0.0
+    for idx in range(passed_windows):
+        if idx < len(window_values):
+            expected += float(window_values[idx] or 0)
+        else:
+            expected += default_value
+
+    current_window_total = float(getattr(benefit, "current_window_total", 0) or 0)
+    past_redeemed = max(0.0, cycle_total - current_window_total)
+    missed = expected - past_redeemed
+    return missed if missed > 0 else 0.0
 
 
 def compute_benefit_totals(benefit: BenefitRead) -> Tuple[float, float]:
@@ -1119,15 +1164,22 @@ def compute_benefit_totals(benefit: BenefitRead) -> Tuple[float, float]:
     expiration = getattr(benefit, "expiration_date", None)
     expired = bool(expiration and expiration < date.today())
 
+    if benefit.type in (BenefitType.standard, BenefitType.incremental):
+        missed_potential = float(getattr(benefit, "missed_window_value", 0) or 0)
+    else:
+        missed_potential = 0.0
+
     if benefit.type == BenefitType.standard:
         base_potential = (
             target_value if target_value is not None else float(benefit.value or 0)
         )
+        base_potential = max(base_potential - missed_potential, 0.0)
         base_utilized = base_potential if benefit.is_used else 0.0
     elif benefit.type == BenefitType.incremental:
         base_potential = (
             target_value if target_value is not None else float(benefit.value or 0)
         )
+        base_potential = max(base_potential - missed_potential, 0.0)
         base_utilized = min(cycle_total, base_potential)
     else:
         if benefit.expected_value is not None:

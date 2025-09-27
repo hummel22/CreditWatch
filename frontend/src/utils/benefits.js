@@ -19,8 +19,22 @@ export function isBenefitCompleted(benefit) {
     return Boolean(benefit.is_used)
   }
   if (benefit.type === 'incremental') {
-    const target = Number(benefit.cycle_target_value ?? benefit.value ?? 0)
-    const used = Number(benefit.cycle_redemption_total ?? 0)
+    const targetCandidates = [
+      benefit.current_window_value,
+      benefit.cycle_target_value,
+      benefit.value
+    ]
+    let target = 0
+    for (const candidate of targetCandidates) {
+      const parsed = Number(candidate)
+      if (Number.isFinite(parsed) && parsed > 0) {
+        target = parsed
+        break
+      }
+    }
+    const used = Number(
+      benefit.current_window_total ?? benefit.cycle_redemption_total ?? 0
+    )
     return target > 0 && used >= target
   }
   if (benefit.type === 'cumulative') {

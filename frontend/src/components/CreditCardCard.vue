@@ -567,6 +567,7 @@ function handleCardDelete() {
             v-for="benefit in sortedBenefits"
             :key="benefit.id"
             :benefit="benefit"
+            :card-context="card"
             @toggle="(value) => emit('toggle-benefit', { id: benefit.id, value })"
             @delete="emit('delete-benefit', benefit.id)"
             @add-redemption="emit('add-redemption', { card, benefit })"

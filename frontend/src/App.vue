@@ -2374,7 +2374,7 @@ onMounted(async () => {
                 v-for="entry in benefitsCollection"
                 :key="entry.benefit.id"
                 :benefit="entry.benefit"
-                :card-context="{ name: entry.card.card_name, company: entry.card.company_name }"
+                :card-context="entry.card"
                 :show-edit="false"
                 @toggle="(value) => handleToggleBenefit({ id: entry.benefit.id, value })"
                 @delete="() => handleDeleteBenefit(entry.benefit.id)"

@@ -604,10 +604,11 @@ const standardUsage = computed(() => {
   margin: 0;
 }
 
+
 .benefit-progress-chart__track {
   width: 100%;
   height: 0.55rem;
-  background: rgba(148, 163, 184, 0.18);
+  background: #e2e8f0;
   border-radius: 999px;
   overflow: hidden;
   display: flex;
@@ -619,16 +620,19 @@ const standardUsage = computed(() => {
   transition: width 0.3s ease;
 }
 
+
 .benefit-progress-chart__segment--used {
-  background: linear-gradient(90deg, #5563ff, #7c4dff);
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
 }
+
 
 .benefit-progress-chart__segment--remaining {
-  background: rgba(148, 163, 184, 0.45);
+  background: #e2e8f0;
 }
 
+
 .benefit-progress-chart__segment--expired {
-  background: rgba(148, 163, 184, 0.25);
+  background: #b91c1c;
 }
 
 .benefit-usage-summary {

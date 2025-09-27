@@ -1530,7 +1530,7 @@ function handleAddRedemption(payload) {
   redemptionModal.benefitId = trackedBenefit.id
   redemptionModal.benefit = trackedBenefit
   redemptionModal.redemptionId = null
-  redemptionModal.label = ''
+  redemptionModal.label = trackedBenefit.name || ''
   redemptionModal.amount = resolveDefaultRedemptionAmount(trackedBenefit, windowContext)
   const defaultDate = resolveRedemptionDateForWindow(windowContext)
   redemptionModal.occurred_on = formatDateInput(defaultDate)
@@ -1924,6 +1924,12 @@ async function populateBenefitWindows(card, benefit) {
       benefit.type === 'incremental'
         ? Math.max(windowTarget - total, 0)
         : null
+    const usedAt =
+      benefit.type === 'standard' && benefit.used_at ? parseDate(benefit.used_at) : null
+    const redeemed =
+      (benefit.type === 'standard' &&
+        ((usedAt && isWithinRange(usedAt, window.start, window.end)) || total > 0)) ||
+      (benefit.type === 'incremental' && total > 0)
     return {
       label: window.label,
       start: window.start,
@@ -1932,7 +1938,8 @@ async function populateBenefitWindows(card, benefit) {
       targetValue: windowTarget,
       entries: windowEntries,
       total,
-      remaining
+      remaining,
+      redeemed
     }
   })
 }
@@ -2859,6 +2866,7 @@ onMounted(async () => {
   <BaseModal
     :open="historyModal.open"
     :title="historyModal.benefit ? `Redemption history · ${historyModal.benefit.name}` : 'Redemption history'"
+    :z-index="1100"
     @close="closeHistoryModal"
   >
     <div v-if="historyModal.loading" class="history-loading">Loading history...</div>
@@ -2983,7 +2991,11 @@ onMounted(async () => {
   >
     <div v-if="benefitWindowsModal.loading" class="history-loading">Loading windows...</div>
     <div v-else-if="benefitWindowsModal.windows.length" class="window-grid">
-      <article v-for="window in benefitWindowsModal.windows" :key="window.label" class="window-card">
+      <article
+        v-for="window in benefitWindowsModal.windows"
+        :key="window.label"
+        :class="['window-card', { 'window-card--redeemed': window.redeemed }]"
+      >
         <div class="window-card__header">
           <div class="window-card__info">
             <h3 class="window-title">{{ window.label }}</h3>

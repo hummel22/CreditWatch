@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+import logging
+import os
+import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-import logging
-import os
-import sqlite3
-
 from filelock import FileLock, Timeout
+from sqlalchemy import inspect
 from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, SQLModel, create_engine
+
+from .models import Bug
 
 logger = logging.getLogger("creditwatch.database")
 
@@ -66,6 +68,7 @@ def _run_database_initialisation_steps() -> None:
     except (OperationalError, sqlite3.OperationalError) as exc:
         _log_database_diagnostics(exc)
         raise
+    ensure_bug_table()
     ensure_company_name_column()
     ensure_benefit_type_column()
     ensure_benefit_window_values_column()
@@ -248,6 +251,15 @@ def ensure_card_cancelled_column() -> None:
             connection.exec_driver_sql(
                 "ALTER TABLE creditcard ADD COLUMN is_cancelled BOOLEAN NOT NULL DEFAULT 0"
             )
+
+
+def ensure_bug_table() -> None:
+    """Create the bug tracker table for older databases."""
+
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    if "bug" not in existing_tables:
+        Bug.__table__.create(bind=engine)
 
 
 def get_session() -> Iterator[Session]:

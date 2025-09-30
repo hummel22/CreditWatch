@@ -33,6 +33,7 @@ from .models import (
     BenefitRedemption,
     BenefitType,
     BenefitWindowExclusion,
+    Bug,
     CreditCard,
     YearTrackingMode,
 )
@@ -51,6 +52,9 @@ from .schemas import (
     BackupSettingsRead,
     BackupSettingsUpdate,
     BackupSettingsWrite,
+    BugCreate,
+    BugRead,
+    BugUpdate,
     CardTemplateExportRequest,
     CreditCardCreate,
     CreditCardUpdate,
@@ -129,6 +133,37 @@ async def on_shutdown() -> None:
 @app.get("/api/health")
 def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/bugs", response_model=List[BugRead])
+def list_bugs(
+    completed: Optional[bool] = Query(None), session: Session = Depends(get_session)
+) -> List[BugRead]:
+    return crud.list_bugs(session, completed=completed)
+
+
+@app.post("/api/bugs", response_model=BugRead, status_code=status.HTTP_201_CREATED)
+def create_bug(payload: BugCreate, session: Session = Depends(get_session)) -> BugRead:
+    return crud.create_bug(session, payload)
+
+
+@app.put("/api/bugs/{bug_id}", response_model=BugRead)
+def update_bug(bug_id: int, payload: BugUpdate, session: Session = Depends(get_session)) -> BugRead:
+    bug = crud.get_bug(session, bug_id)
+    if bug is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bug not found")
+    if not payload.model_dump(exclude_unset=True):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No updates provided.")
+    return crud.update_bug(session, bug, payload)
+
+
+@app.delete("/api/bugs/{bug_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
+def delete_bug(bug_id: int, session: Session = Depends(get_session)) -> Response:
+    bug = crud.get_bug(session, bug_id)
+    if bug is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bug not found")
+    crud.delete_bug(session, bug)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.get("/api/frequencies", response_model=List[str])

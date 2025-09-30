@@ -1015,6 +1015,10 @@ textarea:focus {
   flex-wrap: wrap;
 }
 
+.section-search-input {
+  min-width: min(20rem, 100%);
+}
+
 .section-header .section-title {
   margin-bottom: 0;
 }

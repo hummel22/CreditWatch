@@ -1159,6 +1159,8 @@ const totals = computed(() => {
   }
 })
 
+const benefitSearchQuery = ref('')
+
 const benefitsCollection = computed(() => {
   const entries = []
   for (const card of cards.value) {
@@ -1173,6 +1175,19 @@ const benefitsCollection = computed(() => {
     }
   }
   return entries.sort((a, b) => compareBenefits(a.benefit, b.benefit))
+})
+
+const filteredBenefitsCollection = computed(() => {
+  const query = benefitSearchQuery.value.trim().toLowerCase()
+  if (!query) {
+    return benefitsCollection.value
+  }
+  return benefitsCollection.value.filter(({ benefit }) => {
+    const name = typeof benefit?.name === 'string' ? benefit.name.toLowerCase() : ''
+    const description =
+      typeof benefit?.description === 'string' ? benefit.description.toLowerCase() : ''
+    return name.includes(query) || description.includes(query)
+  })
 })
 
 async function loadFrequencies() {
@@ -2640,19 +2655,34 @@ onMounted(async () => {
                   Review every benefit across your cards in a single view.
                 </p>
               </div>
+              <div class="section-actions">
+                <input
+                  v-model="benefitSearchQuery"
+                  type="search"
+                  class="section-search-input"
+                  placeholder="Search benefits"
+                  aria-label="Search benefits"
+                />
+              </div>
             </div>
             <p v-if="loading" class="empty-state">Loading benefits...</p>
             <p v-else-if="!benefitsCollection.length" class="empty-state">
               No benefits to display yet. Add benefits to your cards to see them here.
             </p>
+            <p
+              v-else-if="benefitsCollection.length && !filteredBenefitsCollection.length"
+              class="empty-state"
+            >
+              No benefits match your search.
+            </p>
           </div>
           <div
-            v-if="!loading && benefitsCollection.length"
+            v-if="!loading && filteredBenefitsCollection.length"
             class="benefits-collection content-constrained"
           >
             <div class="benefits-collection-grid">
               <BenefitCard
-                v-for="entry in benefitsCollection"
+                v-for="entry in filteredBenefitsCollection"
                 :key="entry.benefit.id"
                 :benefit="entry.benefit"
                 :card-context="entry.card"

@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import apiClient from './utils/apiClient'
 import BaseModal from './components/BaseModal.vue'
+import BugTracker from './components/BugTracker.vue'
 import BenefitCard from './components/BenefitCard.vue'
 import CreditCardList from './components/CreditCardList.vue'
 import {
@@ -26,12 +27,14 @@ const navDrawerOpen = ref(false)
 const navItems = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'benefits', label: 'Benefits' },
+  { id: 'bugs', label: 'Bug Tracker' },
   { id: 'admin', label: 'Admin' }
 ]
 
 const viewToPathMap = {
   dashboard: '/',
   benefits: '/benefits',
+  bugs: '/bugs',
   admin: '/admin'
 }
 
@@ -141,6 +144,7 @@ const notificationTestResults = reactive({
 const scrollPositions = reactive({
   dashboard: 0,
   benefits: 0,
+  bugs: 0,
   admin: 0
 })
 
@@ -213,7 +217,10 @@ const confirmDialog = reactive({
 
 const isDashboardView = computed(() => currentView.value === 'dashboard')
 const isBenefitsView = computed(() => currentView.value === 'benefits')
+const isBugTrackerView = computed(() => currentView.value === 'bugs')
 const isAdminView = computed(() => currentView.value === 'admin')
+const showNewCardButton = computed(() => isDashboardView.value || isBenefitsView.value)
+const showAdminTemplateButton = computed(() => isAdminView.value)
 
 function updateHistoryState(view, { replace = false } = {}) {
   if (typeof window === 'undefined') {
@@ -2556,14 +2563,19 @@ onMounted(async () => {
           </div>
           <div class="header-actions">
             <button
-              v-if="!isAdminView"
+              v-if="showNewCardButton"
               class="primary-button"
               type="button"
               @click="showCardModal = true"
             >
               New card
             </button>
-            <button v-else class="primary-button" type="button" @click="openAdminCreateModal">
+            <button
+              v-else-if="showAdminTemplateButton"
+              class="primary-button"
+              type="button"
+              @click="openAdminCreateModal"
+            >
               New template
             </button>
           </div>
@@ -2696,6 +2708,10 @@ onMounted(async () => {
             </div>
           </div>
         </section>
+      </template>
+
+      <template v-else-if="isBugTrackerView">
+        <BugTracker />
       </template>
 
       <template v-else>

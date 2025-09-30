@@ -49,6 +49,46 @@ def normalise_window_values(
     return serialised
 
 
+class BugBase(SQLModel):
+    description: str
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def normalise_description(cls, value: Optional[str]) -> str:
+        cleaned = str(value or "").strip()
+        if not cleaned:
+            raise ValueError("Description is required.")
+        return cleaned
+
+
+class BugCreate(BugBase):
+    pass
+
+
+class BugUpdate(SQLModel):
+    description: Optional[str] = None
+    is_completed: Optional[bool] = None
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def trim_optional_description(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = str(value).strip()
+        if not cleaned:
+            raise ValueError("Description cannot be empty.")
+        return cleaned
+
+
+class BugRead(BugBase):
+    id: int
+    is_completed: bool
+    created_at: datetime
+    completed_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class BenefitBase(SQLModel):
     name: str
     description: Optional[str] = None

@@ -14,6 +14,7 @@ from .models import (
     BenefitRedemption,
     BenefitType,
     BenefitWindowExclusion,
+    Bug,
     CreditCard,
     NotificationLog,
     NotificationSettings,
@@ -26,6 +27,8 @@ from .schemas import (
     BenefitUpdate,
     BenefitUsageUpdate,
     BenefitWindowExclusionCreate,
+    BugCreate,
+    BugUpdate,
     CreditCardCreate,
     CreditCardUpdate,
     BackupSettingsUpdate,
@@ -211,6 +214,52 @@ def create_benefit_window_exclusion(
     session.commit()
     session.refresh(exclusion)
     return exclusion
+
+
+def list_bugs(session: Session, *, completed: Optional[bool] = None) -> List[Bug]:
+    statement = select(Bug)
+    if completed is not None:
+        statement = statement.where(Bug.is_completed == completed)
+    statement = statement.order_by(Bug.created_at.desc())
+    return session.exec(statement).all()
+
+
+def get_bug(session: Session, bug_id: int) -> Optional[Bug]:
+    return session.get(Bug, bug_id)
+
+
+def create_bug(session: Session, payload: BugCreate) -> Bug:
+    bug = Bug(description=payload.description)
+    session.add(bug)
+    session.commit()
+    session.refresh(bug)
+    return bug
+
+
+def update_bug(session: Session, bug: Bug, payload: BugUpdate) -> Bug:
+    update_data = payload.model_dump(exclude_unset=True)
+    description = update_data.get("description")
+    is_completed = update_data.get("is_completed")
+
+    if description is not None:
+        bug.description = description
+
+    if is_completed is not None:
+        bug.is_completed = is_completed
+        if is_completed and bug.completed_at is None:
+            bug.completed_at = datetime.utcnow()
+        elif not is_completed:
+            bug.completed_at = None
+
+    session.add(bug)
+    session.commit()
+    session.refresh(bug)
+    return bug
+
+
+def delete_bug(session: Session, bug: Bug) -> None:
+    session.delete(bug)
+    session.commit()
 
 
 def delete_benefit_window_exclusion(

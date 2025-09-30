@@ -165,3 +165,15 @@ class NotificationLog(SQLModel, table=True):
     )
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
+
+class Bug(SQLModel, table=True):
+    """Simple bug tracker entry."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    description: str = Field(description="Bug summary or reproduction details")
+    is_completed: bool = Field(default=False, description="Whether the bug has been resolved")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    completed_at: Optional[datetime] = Field(
+        default=None, description="When the bug was marked complete"
+    )
+

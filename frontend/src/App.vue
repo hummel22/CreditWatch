@@ -8,6 +8,7 @@ import CreditCardList from './components/CreditCardList.vue'
 import SimpleBarChart from './components/charts/SimpleBarChart.vue'
 import SimpleLineChart from './components/charts/SimpleLineChart.vue'
 import SimplePieChart from './components/charts/SimplePieChart.vue'
+import TimelineBarChart from './components/charts/TimelineBarChart.vue'
 import {
   buildCardCycles,
   computeCardCycle,
@@ -1582,14 +1583,16 @@ const benefitsAnalysisMonthlyFees = computed(() => {
   return monthly
 })
 
-const benefitsAnalysisMonthlyFeeBars = computed(() =>
+const benefitsAnalysisMonthlyFeeTimeline = computed(() =>
   MONTH_LABELS.map((label, index) => {
     const value = Number(benefitsAnalysisMonthlyFees.value[index] ?? 0)
+    const safeValue = Number.isFinite(value) && value > 0 ? value : 0
     return {
       label: label.slice(0, 3),
-      value,
+      fullLabel: label,
+      value: safeValue,
       color: '#6366f1',
-      displayValue: formatCurrency(value)
+      displayValue: formatCurrency(safeValue)
     }
   })
 )
@@ -1692,20 +1695,25 @@ const benefitsAnalysisUtilizedByCard = computed(() => {
     .slice(0, 8)
 })
 
-const benefitsAnalysisUtilizationRate = computed(() => {
-  const entries = benefitsAnalysisActiveCards.value.map((card, index) => {
+const benefitsAnalysisUtilizationRows = computed(() => {
+  const entries = benefitsAnalysisActiveCards.value.map((card) => {
     const potential = Number(card.potential_value ?? 0)
     const utilized = Number(card.utilized_value ?? 0)
-    const rate = potential > 0 ? (utilized / potential) * 100 : 0
-    const safeRate = Number.isFinite(rate) ? rate : 0
+    const safePotential = Number.isFinite(potential) && potential > 0 ? potential : 0
+    const safeUtilized = Number.isFinite(utilized) && utilized > 0 ? utilized : 0
+    const rate = safePotential > 0 ? (safeUtilized / safePotential) * 100 : 0
+    const clampedRate = Math.max(Math.min(Number.isFinite(rate) ? rate : 0, 100), 0)
     return {
       label: card.card_name,
-      value: safeRate > 0 ? safeRate : 0,
-      color: getAnalysisColor(index),
-      displayValue: `${Math.round(safeRate > 0 ? safeRate : 0)}%`
+      rate: clampedRate,
+      formattedRate: `${Math.round(clampedRate)}%`,
+      utilized: safeUtilized,
+      potential: safePotential,
+      utilizedDisplay: formatCurrency(safeUtilized),
+      potentialDisplay: formatCurrency(safePotential)
     }
   })
-  return entries.sort((a, b) => b.value - a.value).slice(0, 8)
+  return entries.sort((a, b) => b.rate - a.rate)
 })
 
 const BENEFIT_TYPE_LABELS = {
@@ -3520,40 +3528,42 @@ onMounted(async () => {
             </p>
           </div>
           <div v-if="benefitsAnalysisHasCards" class="analysis-grid content-constrained">
-            <article class="section-card analysis-card analysis-card--wide">
+            <article class="section-card analysis-card">
               <header class="analysis-card__header">
-                <h3 class="analysis-card__title">Annual fee overview</h3>
+                <h3 class="analysis-card__title">Annual fee total</h3>
                 <p class="analysis-card__subtitle">
-                  Total annual fees and how they are distributed throughout the year.
+                  Combined annual fees across all active cards.
                 </p>
               </header>
-              <div class="analysis-card__metrics">
-                <div class="analysis-metric">
-                  <span class="analysis-metric__label">Total annual fees</span>
-                  <span class="analysis-metric__value">
-                    ${{ benefitsAnalysisTotals.annualFees.toFixed(2) }}
-                  </span>
-                </div>
+              <div class="analysis-highlight">
+                ${{ benefitsAnalysisTotals.annualFees.toFixed(2) }}
               </div>
-              <div class="analysis-card__charts analysis-card__charts--split">
-                <SimplePieChart
-                  v-if="benefitsAnalysisFeePieData.length"
-                  :data="benefitsAnalysisFeePieData"
-                  aria-label="Annual fees by card"
-                >
-                  <template #center>
-                    <span class="analysis-pie-total-label">Total</span>
-                    <span class="analysis-pie-total-value">
-                      ${{ benefitsAnalysisTotals.annualFees.toFixed(2) }}
-                    </span>
-                  </template>
-                </SimplePieChart>
-                <div v-else class="analysis-empty">No annual fees recorded yet.</div>
-                <SimpleBarChart
-                  :data="benefitsAnalysisMonthlyFeeBars"
-                  aria-label="Annual fee amounts by month"
-                />
+            </article>
+
+            <article class="section-card analysis-card analysis-card--visual">
+              <header class="analysis-card__header">
+                <h3 class="analysis-card__title">Annual fees by card</h3>
+                <p class="analysis-card__subtitle">
+                  Distribution of annual fees across your portfolio.
+                </p>
+              </header>
+              <div v-if="benefitsAnalysisFeePieData.length" class="analysis-card__visual">
+                <SimplePieChart :data="benefitsAnalysisFeePieData" aria-label="Annual fees by card" />
               </div>
+              <p v-else class="analysis-empty">No annual fees recorded yet.</p>
+            </article>
+
+            <article class="section-card analysis-card analysis-card--visual analysis-card--wide">
+              <header class="analysis-card__header">
+                <h3 class="analysis-card__title">Annual fee timeline</h3>
+                <p class="analysis-card__subtitle">
+                  When annual fees are due throughout the year.
+                </p>
+              </header>
+              <TimelineBarChart
+                :data="benefitsAnalysisMonthlyFeeTimeline"
+                aria-label="Annual fee amounts by month"
+              />
             </article>
 
             <article class="section-card analysis-card analysis-card--wide">
@@ -3626,11 +3636,27 @@ onMounted(async () => {
                   Redeemed value compared to potential for each card.
                 </p>
               </header>
-              <SimpleBarChart
-                :data="benefitsAnalysisUtilizationRate"
-                :max-value="100"
-                aria-label="Utilization percentage by card"
-              />
+              <div v-if="benefitsAnalysisUtilizationRows.length" class="analysis-utilization-table-wrapper">
+                <table class="analysis-utilization-table">
+                  <tbody>
+                    <tr v-for="row in benefitsAnalysisUtilizationRows" :key="row.label">
+                      <th scope="row">
+                        <span class="analysis-utilization-card-name">{{ row.label }}</span>
+                        <span class="analysis-utilization-subtext">
+                          {{ row.utilizedDisplay }} of {{ row.potentialDisplay }} utilized
+                        </span>
+                      </th>
+                      <td>
+                        <div class="analysis-utilization-bar">
+                          <div class="analysis-utilization-bar__fill" :style="{ width: `${row.rate}%` }"></div>
+                        </div>
+                      </td>
+                      <td class="analysis-utilization-rate">{{ row.formattedRate }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p v-else class="analysis-empty">No utilization data available.</p>
             </article>
 
             <article class="section-card analysis-card">
@@ -3640,7 +3666,7 @@ onMounted(async () => {
                   Potential value grouped by benefit type.
                 </p>
               </header>
-              <div class="analysis-card__centered">
+              <div class="analysis-card__visual">
                 <SimplePieChart
                   :data="benefitsAnalysisBenefitsByType"
                   aria-label="Benefit potential by type"

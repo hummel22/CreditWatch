@@ -5,13 +5,20 @@ import calendar
 import logging
 from contextlib import suppress
 from datetime import date, datetime, time, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import httpx
 from sqlmodel import Session, select
 
 from . import crud
-from .models import Benefit, BenefitType, CreditCard, NotificationSettings, YearTrackingMode
+from .models import (
+    Benefit,
+    BenefitFrequency,
+    BenefitType,
+    CreditCard,
+    NotificationSettings,
+    YearTrackingMode,
+)
 from .schemas import (
     NotificationBenefitSummary,
     NotificationCancelledCardSummary,
@@ -24,6 +31,95 @@ NotificationCategoryMap = Dict[
 ]
 
 logger = logging.getLogger("creditwatch.notifications")
+
+
+def _safe_day(year: int, month: int, day: int) -> int:
+    _, last_day = calendar.monthrange(year, month)
+    return min(day, last_day)
+
+
+def _compute_cycle_bounds(
+    card: CreditCard, mode: YearTrackingMode, reference: date
+) -> Tuple[date, date]:
+    if mode == YearTrackingMode.anniversary:
+        due_month = card.fee_due_date.month
+        due_day = card.fee_due_date.day
+        cycle_end = date(
+            reference.year, due_month, _safe_day(reference.year, due_month, due_day)
+        )
+        if cycle_end <= reference:
+            cycle_end = date(
+                reference.year + 1,
+                due_month,
+                _safe_day(reference.year + 1, due_month, due_day),
+            )
+        cycle_start = date(
+            cycle_end.year - 1,
+            due_month,
+            _safe_day(cycle_end.year - 1, due_month, due_day),
+        )
+    else:
+        cycle_start = date(reference.year, 1, 1)
+        cycle_end = date(reference.year + 1, 1, 1)
+    return cycle_start, cycle_end
+
+
+def _add_months(value: date, months: int) -> date:
+    month_index = value.month - 1 + months
+    year = value.year + month_index // 12
+    month = month_index % 12 + 1
+    day = _safe_day(year, month, value.day)
+    return date(year, month, day)
+
+
+def _enumerate_frequency_windows(
+    cycle_start: date, cycle_end: date, frequency: BenefitFrequency
+) -> List[Tuple[date, date]]:
+    months_map = {
+        BenefitFrequency.monthly: 1,
+        BenefitFrequency.quarterly: 3,
+        BenefitFrequency.semiannual: 6,
+        BenefitFrequency.yearly: 12,
+    }
+    months = months_map.get(frequency)
+    if not months:
+        return []
+    windows: List[Tuple[date, date]] = []
+    cursor = cycle_start
+    while cursor < cycle_end:
+        window_end = _add_months(cursor, months)
+        if window_end > cycle_end:
+            window_end = cycle_end
+        windows.append((cursor, window_end))
+        cursor = window_end
+    return windows
+
+
+def _compute_override_expiration(
+    card: CreditCard, benefit: Benefit, start: date, end: date
+) -> Optional[date]:
+    tracking_mode = benefit.window_tracking_mode or card.year_tracking_mode
+    cycle_start, cycle_end = _compute_cycle_bounds(card, tracking_mode, end)
+
+    if benefit.frequency == BenefitFrequency.yearly:
+        candidate = cycle_end - timedelta(days=1)
+        return candidate if start <= candidate <= end else None
+
+    if benefit.frequency in (
+        BenefitFrequency.monthly,
+        BenefitFrequency.quarterly,
+        BenefitFrequency.semiannual,
+    ):
+        for window_start, window_end in _enumerate_frequency_windows(
+            cycle_start, cycle_end, benefit.frequency
+        ):
+            if window_start >= window_end:
+                continue
+            candidate = window_end - timedelta(days=1)
+            if start <= candidate <= end:
+                return candidate
+
+    return None
 
 
 class NotificationService:
@@ -175,19 +271,41 @@ class NotificationService:
         statement = (
             select(Benefit, CreditCard)
             .join(CreditCard, CreditCard.id == Benefit.credit_card_id)
-            .where(Benefit.expiration_date.is_not(None))
             .where(Benefit.type != BenefitType.cumulative)
             .where(Benefit.exclude_from_notifications.is_(False))
-            .where(Benefit.expiration_date >= start)
-            .where(Benefit.expiration_date <= end)
+            .where(
+                Benefit.expiration_date.is_not(None)
+                | Benefit.window_tracking_mode.is_not(None)
+            )
             .order_by(Benefit.expiration_date, CreditCard.card_name, Benefit.name)
         )
         results: List[NotificationBenefitSummary] = []
         for benefit, card in session.exec(statement).all():
             expiration_raw = benefit.expiration_date
-            if expiration_raw is None:
+            expiration: Optional[date] = None
+            if benefit.window_tracking_mode is not None:
+                expiration = _compute_override_expiration(card, benefit, start, end)
+                supported_frequencies = {
+                    BenefitFrequency.monthly,
+                    BenefitFrequency.quarterly,
+                    BenefitFrequency.semiannual,
+                    BenefitFrequency.yearly,
+                }
+                if (
+                    expiration is None
+                    and benefit.frequency not in supported_frequencies
+                    and expiration_raw is not None
+                    and start <= expiration_raw <= end
+                ):
+                    expiration = expiration_raw
+            else:
+                if expiration_raw is not None and start <= expiration_raw <= end:
+                    expiration = expiration_raw
+
+            if expiration is None:
                 continue
-            expiration = self._resolve_display_expiration(benefit, card, expiration_raw)
+
+            expiration = self._resolve_display_expiration(benefit, card, expiration)
             results.append(
                 NotificationBenefitSummary(
                     card_name=card.card_name,

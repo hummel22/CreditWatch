@@ -12,6 +12,7 @@ from sqlalchemy import inspect
 from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, SQLModel, create_engine
 
+from .migrations import run_migrations
 from .models import Bug
 
 logger = logging.getLogger("creditwatch.database")
@@ -68,6 +69,7 @@ def _run_database_initialisation_steps() -> None:
     except (OperationalError, sqlite3.OperationalError) as exc:
         _log_database_diagnostics(exc)
         raise
+    run_migrations(engine)
     ensure_bug_table()
     ensure_company_name_column()
     ensure_benefit_type_column()

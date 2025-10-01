@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 from pydantic import ConfigDict, field_validator, model_validator
 from sqlmodel import Field, SQLModel
@@ -78,6 +78,37 @@ class BugUpdate(SQLModel):
         if not cleaned:
             raise ValueError("Description cannot be empty.")
         return cleaned
+
+
+def _coerce_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"false", "0", "no", "off", "disabled"}:
+            return False
+        if lowered in {"true", "1", "yes", "on", "enabled"}:
+            return True
+    return bool(value)
+
+
+def normalise_event_type_preferences(value: Optional[Any]) -> Dict[str, bool]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError("Event type preferences must be an object.")
+    cleaned: Dict[str, bool] = {}
+    for raw_key, raw_value in value.items():
+        key = str(raw_key or "").strip()
+        if not key:
+            continue
+        enabled = _coerce_bool(raw_value)
+        if enabled:
+            continue
+        cleaned[key] = False
+    return cleaned
 
 
 class BugRead(BugBase):
@@ -283,6 +314,7 @@ class NotificationSettingsBase(SQLModel):
     webhook_id: str
     default_target: Optional[str] = None
     enabled: bool = True
+    event_type_preferences: Dict[str, bool] = Field(default_factory=dict)
 
     @field_validator("base_url")
     @classmethod
@@ -293,6 +325,11 @@ class NotificationSettingsBase(SQLModel):
         if not cleaned.startswith("http://") and not cleaned.startswith("https://"):
             raise ValueError("The Home Assistant URL must start with http:// or https://.")
         return cleaned.rstrip("/")
+
+    @field_validator("event_type_preferences", mode="before")
+    @classmethod
+    def validate_event_type_preferences(cls, value: Optional[Any]) -> Dict[str, bool]:
+        return normalise_event_type_preferences(value)
 
 
 class NotificationSettingsRead(NotificationSettingsBase):
@@ -432,6 +469,7 @@ class NotificationSettingsUpdate(SQLModel):
     webhook_id: Optional[str] = None
     default_target: Optional[str] = None
     enabled: Optional[bool] = None
+    event_type_preferences: Optional[Dict[str, bool]] = None
 
     @field_validator("base_url")
     @classmethod
@@ -442,6 +480,15 @@ class NotificationSettingsUpdate(SQLModel):
         if not cleaned.startswith("http://") and not cleaned.startswith("https://"):
             raise ValueError("The Home Assistant URL must start with http:// or https://.")
         return cleaned.rstrip("/")
+
+    @field_validator("event_type_preferences", mode="before")
+    @classmethod
+    def validate_event_preferences_optional(
+        cls, value: Optional[Any]
+    ) -> Optional[Dict[str, bool]]:
+        if value is None:
+            return None
+        return normalise_event_type_preferences(value)
 
 
 class NotificationCustomMessage(SQLModel):
@@ -488,7 +535,11 @@ class NotificationLogRead(SQLModel):
     target: Optional[str] = None
     sent: bool
     response_message: Optional[str] = None
-    categories: Dict[str, List[NotificationBenefitSummary]] = Field(default_factory=dict)
+    reason: Optional[str] = None
+    categories: Dict[
+        str,
+        List[NotificationBenefitSummary | NotificationCancelledCardSummary],
+    ] = Field(default_factory=dict)
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

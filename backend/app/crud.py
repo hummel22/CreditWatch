@@ -4,7 +4,7 @@ import calendar
 from datetime import date, datetime
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlmodel import Session, select
 
 from .models import (
@@ -455,6 +455,7 @@ def log_notification_event(
     sent: bool,
     response_message: str | None,
     categories: Dict[str, object] | None,
+    reason: str | None,
 ) -> NotificationLog:
     entry = NotificationLog(
         event_type=event_type,
@@ -463,6 +464,7 @@ def log_notification_event(
         target=target,
         sent=sent,
         response_message=response_message,
+        reason=reason,
         categories=categories or {},
     )
     session.add(entry)
@@ -471,12 +473,39 @@ def log_notification_event(
     return entry
 
 
-def list_notification_logs(session: Session, *, limit: int = 50) -> List[NotificationLog]:
-    statement = (
-        select(NotificationLog)
-        .order_by(NotificationLog.created_at.desc())
-        .limit(max(1, limit))
-    )
+def list_notification_logs(
+    session: Session,
+    *,
+    limit: int = 50,
+    search: Optional[str] = None,
+    sort_direction: str = "desc",
+) -> List[NotificationLog]:
+    safe_limit = max(1, min(200, int(limit)))
+    statement = select(NotificationLog)
+    if search:
+        term = str(search).strip()
+        if term:
+            pattern = f"%{term}%"
+            statement = statement.where(
+                or_(
+                    NotificationLog.event_type.ilike(pattern),
+                    NotificationLog.title.ilike(pattern),
+                    NotificationLog.body.ilike(pattern),
+                    NotificationLog.target.ilike(pattern),
+                    NotificationLog.response_message.ilike(pattern),
+                    NotificationLog.reason.ilike(pattern),
+                )
+            )
+    direction = str(sort_direction or "desc").lower()
+    if direction == "asc":
+        statement = statement.order_by(
+            NotificationLog.created_at.asc(), NotificationLog.id.asc()
+        )
+    else:
+        statement = statement.order_by(
+            NotificationLog.created_at.desc(), NotificationLog.id.desc()
+        )
+    statement = statement.limit(safe_limit)
     return session.exec(statement).all()
 
 

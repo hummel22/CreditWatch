@@ -65,8 +65,24 @@ const notificationSettings = reactive({
   base_url: '',
   webhook_id: '',
   default_target: '',
-  enabled: true
+  enabled: true,
+  event_type_preferences: {}
 })
+
+const notificationTypeOptions = [
+  {
+    id: 'daily',
+    label: 'Daily summary notifications',
+    description:
+      'Send the automated 8:00 AM reminder when benefits are approaching their expiration.',
+  },
+  {
+    id: 'custom',
+    label: 'Custom notifications',
+    description:
+      'Allow one-off messages triggered from this page to be delivered via Home Assistant.',
+  },
+]
 
 const notificationSettingsMeta = reactive({
   created_at: null,
@@ -195,7 +211,10 @@ const notificationHistoryModal = reactive({
   open: false,
   loading: false,
   entries: [],
-  error: ''
+  error: '',
+  search: '',
+  sortDirection: 'desc',
+  limit: 50
 })
 
 const backupTestLoading = ref(false)
@@ -292,7 +311,8 @@ watch(
     notificationSettings.base_url,
     notificationSettings.webhook_id,
     notificationSettings.default_target,
-    notificationSettings.enabled
+    notificationSettings.enabled,
+    JSON.stringify(notificationSettings.event_type_preferences || {})
   ],
   () => {
     if (!notificationSettingsLoaded.value) {
@@ -320,12 +340,47 @@ watch(
   }
 )
 
+function normaliseNotificationTypePreferences(value) {
+  if (!value || typeof value !== 'object') {
+    return {}
+  }
+  const cleaned = {}
+  for (const [rawKey, rawValue] of Object.entries(value)) {
+    const typeId = String(rawKey || '').trim()
+    if (!typeId) {
+      continue
+    }
+    if (rawValue === false) {
+      cleaned[typeId] = false
+      continue
+    }
+    if (rawValue === true) {
+      continue
+    }
+    if (typeof rawValue === 'string') {
+      const lowered = rawValue.trim().toLowerCase()
+      if (['false', '0', 'no', 'off', 'disabled'].includes(lowered)) {
+        cleaned[typeId] = false
+        continue
+      }
+      if (['true', '1', 'yes', 'on', 'enabled'].includes(lowered)) {
+        continue
+      }
+    }
+    if (!rawValue) {
+      cleaned[typeId] = false
+    }
+  }
+  return cleaned
+}
+
 function resetNotificationSettingsState() {
   notificationSettings.id = null
   notificationSettings.base_url = ''
   notificationSettings.webhook_id = ''
   notificationSettings.default_target = ''
   notificationSettings.enabled = true
+  notificationSettings.event_type_preferences = {}
   notificationSettingsMeta.created_at = null
   notificationSettingsMeta.updated_at = null
 }
@@ -340,6 +395,9 @@ function applyNotificationSettings(data) {
   notificationSettings.webhook_id = data.webhook_id ?? ''
   notificationSettings.default_target = data.default_target ?? ''
   notificationSettings.enabled = data.enabled !== false
+  notificationSettings.event_type_preferences = normaliseNotificationTypePreferences(
+    data.event_type_preferences,
+  )
   notificationSettingsMeta.created_at = data.created_at ?? null
   notificationSettingsMeta.updated_at = data.updated_at ?? null
 }
@@ -347,6 +405,50 @@ function applyNotificationSettings(data) {
 function clearNotificationSettingsMessages() {
   notificationSettingsError.value = ''
   notificationSettingsSuccess.value = ''
+}
+
+function buildNotificationTypePreferencesPayload() {
+  const prefs = notificationSettings.event_type_preferences || {}
+  const payload = {}
+  for (const [key, value] of Object.entries(prefs)) {
+    if (!key) {
+      continue
+    }
+    if (value === false) {
+      payload[key] = false
+    } else if (value === true) {
+      payload[key] = true
+    }
+  }
+  return payload
+}
+
+function isNotificationTypeEnabled(typeId) {
+  if (!typeId) {
+    return true
+  }
+  const prefs = notificationSettings.event_type_preferences || {}
+  if (!(typeId in prefs)) {
+    return true
+  }
+  return Boolean(prefs[typeId])
+}
+
+function setNotificationTypeEnabled(typeId, enabled) {
+  if (!typeId) {
+    return
+  }
+  const current = notificationSettings.event_type_preferences || {}
+  const next = { ...current }
+  if (enabled) {
+    delete next[typeId]
+  } else {
+    next[typeId] = false
+  }
+  notificationSettings.event_type_preferences = next
+  if (notificationSettingsLoaded.value) {
+    clearNotificationSettingsMessages()
+  }
 }
 
 function resetBackupSettingsState() {
@@ -467,10 +569,12 @@ async function saveNotificationSettings() {
   }
   notificationSettingsSaving.value = true
   try {
+    const typePreferences = buildNotificationTypePreferencesPayload()
     const payload = {
       base_url: baseUrl,
       webhook_id: webhookId,
-      enabled: Boolean(notificationSettings.enabled)
+      enabled: Boolean(notificationSettings.enabled),
+      event_type_preferences: typePreferences
     }
     payload.default_target = defaultTarget ? defaultTarget : null
     const response = await apiClient.put('/api/admin/notifications/settings', payload)
@@ -761,13 +865,23 @@ function formatNotificationEventType(value) {
     .replace(/\b\w/g, (char) => char.toUpperCase())
 }
 
-async function openNotificationHistory() {
-  notificationHistoryModal.open = true
+async function loadNotificationHistory() {
   notificationHistoryModal.loading = true
   notificationHistoryModal.error = ''
   notificationHistoryModal.entries = []
   try {
-    const response = await apiClient.get('/api/admin/notifications/history')
+    const params = {
+      limit: Math.max(1, Math.min(200, Number(notificationHistoryModal.limit) || 50)),
+      sort_direction:
+        notificationHistoryModal.sortDirection === 'asc' ? 'asc' : 'desc',
+    }
+    const trimmedSearch = notificationHistoryModal.search.trim()
+    if (trimmedSearch) {
+      params.search = trimmedSearch
+    }
+    const response = await apiClient.get('/api/admin/notifications/history', {
+      params,
+    })
     notificationHistoryModal.entries = Array.isArray(response.data) ? response.data : []
   } catch (err) {
     notificationHistoryModal.error = extractErrorMessage(
@@ -780,9 +894,32 @@ async function openNotificationHistory() {
   }
 }
 
+async function openNotificationHistory() {
+  notificationHistoryModal.open = true
+  await loadNotificationHistory()
+}
+
 function closeNotificationHistory() {
   notificationHistoryModal.open = false
   notificationHistoryModal.loading = false
+}
+
+async function applyNotificationHistorySearch() {
+  await loadNotificationHistory()
+}
+
+function clearNotificationHistorySearch() {
+  if (!notificationHistoryModal.search) {
+    return
+  }
+  notificationHistoryModal.search = ''
+  loadNotificationHistory()
+}
+
+async function toggleNotificationHistorySort() {
+  notificationHistoryModal.sortDirection =
+    notificationHistoryModal.sortDirection === 'desc' ? 'asc' : 'desc'
+  await loadNotificationHistory()
 }
 
 function requestConfirmation(options = {}) {
@@ -2897,6 +3034,26 @@ onMounted(async () => {
                   </label>
                 </div>
               </div>
+              <div class="notification-type-settings">
+                <p class="field-label">Notification types</p>
+                <div class="notification-type-list">
+                  <label
+                    v-for="option in notificationTypeOptions"
+                    :key="option.id"
+                    class="checkbox-option notification-type-option"
+                  >
+                    <input
+                      :checked="isNotificationTypeEnabled(option.id)"
+                      type="checkbox"
+                      @change="setNotificationTypeEnabled(option.id, $event.target.checked)"
+                    />
+                    <div class="notification-type-copy">
+                      <span class="notification-type-label">{{ option.label }}</span>
+                      <p class="helper-text subtle-text">{{ option.description }}</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
               <div class="notification-meta">
                 <p
                   v-if="notificationSettingsLoaded && !notificationSettings.enabled"
@@ -3942,38 +4099,76 @@ onMounted(async () => {
     <p v-else-if="notificationHistoryModal.error" class="helper-text error-text">
       {{ notificationHistoryModal.error }}
     </p>
-    <div
-      v-else-if="notificationHistoryModal.entries.length"
-      class="notification-history-table-wrapper"
-    >
-      <table class="notification-history-table">
-        <thead>
-          <tr>
-            <th scope="col">Sent at</th>
-            <th scope="col">Type</th>
-            <th scope="col">Title</th>
-            <th scope="col">Target</th>
-            <th scope="col">Status</th>
-            <th scope="col">Details</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="entry in notificationHistoryModal.entries" :key="entry.id">
-            <td>{{ formatNotificationTimestamp(entry.created_at) || '–' }}</td>
-            <td>{{ formatNotificationEventType(entry.event_type) || '–' }}</td>
-            <td>{{ entry.title || '–' }}</td>
-            <td>{{ entry.target || '–' }}</td>
-            <td>
-              <span :class="['status-pill', entry.sent ? 'success' : 'error']">
-                {{ entry.sent ? 'Delivered' : 'Not sent' }}
-              </span>
-            </td>
-            <td>{{ entry.response_message || '–' }}</td>
-          </tr>
-        </tbody>
-      </table>
+    <div v-else class="notification-history-content">
+      <div class="notification-history-toolbar">
+        <form class="notification-history-search" @submit.prevent="applyNotificationHistorySearch">
+          <input
+            v-model="notificationHistoryModal.search"
+            type="search"
+            placeholder="Search notifications"
+            :disabled="notificationHistoryModal.loading"
+          />
+          <button class="primary-button secondary" type="submit" :disabled="notificationHistoryModal.loading">
+            Search
+          </button>
+          <button
+            v-if="notificationHistoryModal.search"
+            class="link-button"
+            type="button"
+            :disabled="notificationHistoryModal.loading"
+            @click="clearNotificationHistorySearch"
+          >
+            Clear
+          </button>
+        </form>
+        <button
+          class="link-button"
+          type="button"
+          :disabled="notificationHistoryModal.loading"
+          @click="toggleNotificationHistorySort"
+        >
+          Sort:
+          {{ notificationHistoryModal.sortDirection === 'desc' ? 'Newest first' : 'Oldest first' }}
+        </button>
+      </div>
+      <div v-if="notificationHistoryModal.entries.length" class="notification-history-table-wrapper">
+        <table class="notification-history-table">
+          <thead>
+            <tr>
+              <th scope="col">Sent at</th>
+              <th scope="col">Type</th>
+              <th scope="col">Title</th>
+              <th scope="col">Target</th>
+              <th scope="col">Status</th>
+              <th scope="col">Reason</th>
+              <th scope="col">Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="entry in notificationHistoryModal.entries" :key="entry.id">
+              <td>{{ formatNotificationTimestamp(entry.created_at) || '–' }}</td>
+              <td>{{ formatNotificationEventType(entry.event_type) || '–' }}</td>
+              <td>{{ entry.title || '–' }}</td>
+              <td>{{ entry.target || '–' }}</td>
+              <td>
+                <span :class="['status-pill', entry.sent ? 'success' : 'error']">
+                  {{ entry.sent ? 'Delivered' : 'Not sent' }}
+                </span>
+              </td>
+              <td>{{ entry.reason || '–' }}</td>
+              <td>{{ entry.response_message || '–' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p v-else class="empty-state">
+        {{
+          notificationHistoryModal.search
+            ? 'No notifications match the current search.'
+            : 'No notifications have been recorded yet.'
+        }}
+      </p>
     </div>
-    <p v-else class="empty-state">No notifications have been recorded yet.</p>
     <template #footer>
       <button class="primary-button secondary" type="button" @click="closeNotificationHistory">
         Close

@@ -8,7 +8,7 @@ import sqlite3
 import tempfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Literal, Optional, Sequence, Tuple
 
 from fastapi import (
     Depends,
@@ -323,9 +323,16 @@ async def trigger_daily_notification_test(
 )
 def get_notification_history_endpoint(
     limit: int = Query(50, ge=1, le=200),
+    sort_direction: Literal["asc", "desc"] = Query("desc"),
+    search: Optional[str] = Query(None, min_length=1, max_length=200),
     session: Session = Depends(get_session),
 ) -> List[NotificationLogRead]:
-    records = crud.list_notification_logs(session, limit=limit)
+    records = crud.list_notification_logs(
+        session,
+        limit=limit,
+        search=search.strip() if isinstance(search, str) else None,
+        sort_direction=sort_direction,
+    )
     return [
         NotificationLogRead.model_validate(record, from_attributes=True)
         for record in records

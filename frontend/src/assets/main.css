@@ -1910,33 +1910,33 @@ textarea:focus {
   vertical-align: middle;
 }
 
+.analysis-utilization-table td:nth-child(2) {
+  width: 100%;
+}
+
 .analysis-utilization-card-name {
   display: block;
   font-weight: 600;
   color: var(--color-text-heading);
 }
 
-.analysis-utilization-subtext {
-  display: block;
-  font-size: 0.85rem;
-  margin-top: 0.15rem;
+.analysis-utilization-progress {
+  width: 100%;
+  display: flex;
+  align-items: center;
 }
 
-.analysis-utilization-bar {
-  position: relative;
-  height: 0.75rem;
-  background: var(--color-surface-overlay-faint);
+.analysis-utilization-progress__track {
+  width: 100%;
+  height: 0.55rem;
   border-radius: 999px;
+  background: var(--color-value-bar-track);
   overflow: hidden;
 }
 
-.analysis-utilization-bar__fill {
-  position: absolute;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  background: linear-gradient(90deg, #6366f1, #8b5cf6);
-  border-radius: inherit;
+.analysis-utilization-progress__fill {
+  height: 100%;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
   transition: width 0.3s ease;
 }
 

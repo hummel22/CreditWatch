@@ -5,6 +5,7 @@ import BaseModal from './components/BaseModal.vue'
 import BugTracker from './components/BugTracker.vue'
 import BenefitCard from './components/BenefitCard.vue'
 import CreditCardList from './components/CreditCardList.vue'
+import DrilldownPieChart from './components/charts/DrilldownPieChart.vue'
 import SimpleBarChart from './components/charts/SimpleBarChart.vue'
 import SimpleLineChart from './components/charts/SimpleLineChart.vue'
 import SimplePieChart from './components/charts/SimplePieChart.vue'
@@ -1552,18 +1553,84 @@ const benefitsAnalysisTotals = computed(() => {
   }
 })
 
-const benefitsAnalysisFeePieData = computed(() =>
-  benefitsAnalysisActiveCards.value.map((card, index) => {
+const benefitsAnalysisFeePieChart = computed(() => {
+  const series = []
+  const drilldown = []
+
+  benefitsAnalysisActiveCards.value.forEach((card, index) => {
     const fee = Number(card.annual_fee ?? 0)
-    const value = Number.isFinite(fee) ? fee : 0
-    return {
-      label: card.card_name,
-      value,
-      color: getAnalysisColor(index),
-      displayValue: formatCurrency(value)
+    const safeFee = Number.isFinite(fee) && fee > 0 ? fee : 0
+    if (safeFee <= 0) {
+      return
+    }
+
+    const color = getAnalysisColor(index)
+    const baseDrilldownId = card.id != null ? `card-${card.id}` : `card-${index}`
+    const benefits = Array.isArray(card.benefits) ? card.benefits : []
+
+    const drilldownData = benefits
+      .map((benefit) => {
+        const amount = getCycleTargetValue(benefit)
+        const safeAmount = Number.isFinite(amount) && amount > 0 ? amount : 0
+        if (safeAmount <= 0) {
+          return null
+        }
+        const rawName = typeof benefit?.name === 'string' ? benefit.name.trim() : ''
+        const label = rawName || 'Benefit'
+        return {
+          name: label,
+          y: safeAmount,
+          displayValue: formatCurrency(safeAmount, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+          })
+        }
+      })
+      .filter((entry) => entry !== null)
+      .sort((a, b) => b.y - a.y)
+
+    const limitedDrilldownData = drilldownData.slice(0, 8)
+    if (drilldownData.length > 8) {
+      const remainder = drilldownData.slice(8).reduce((acc, entry) => acc + entry.y, 0)
+      if (remainder > 0) {
+        limitedDrilldownData.push({
+          name: 'Other benefits',
+          y: remainder,
+          displayValue: formatCurrency(remainder, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+          })
+        })
+      }
+    }
+
+    series.push({
+      name: card.card_name,
+      y: safeFee,
+      color,
+      drilldown: limitedDrilldownData.length ? baseDrilldownId : undefined,
+      displayValue: formatCurrency(safeFee, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      })
+    })
+
+    if (limitedDrilldownData.length) {
+      drilldown.push({
+        id: baseDrilldownId,
+        name: `${card.card_name} benefits`,
+        data: limitedDrilldownData
+      })
     }
   })
-)
+
+  const sortedSeries = series.sort((a, b) => b.y - a.y)
+
+  return {
+    series: sortedSeries,
+    drilldown
+  }
+})
 
 const benefitsAnalysisMonthlyFees = computed(() => {
   const monthly = Array.from({ length: 12 }, () => 0)
@@ -1695,6 +1762,11 @@ const benefitsAnalysisUtilizedByCard = computed(() => {
     .slice(0, 8)
 })
 
+const utilizationPercentFormatter = new Intl.NumberFormat(undefined, {
+  maximumFractionDigits: 0,
+  minimumFractionDigits: 0
+})
+
 const benefitsAnalysisUtilizationRows = computed(() => {
   const entries = benefitsAnalysisActiveCards.value.map((card) => {
     const potential = Number(card.potential_value ?? 0)
@@ -1706,11 +1778,8 @@ const benefitsAnalysisUtilizationRows = computed(() => {
     return {
       label: card.card_name,
       rate: clampedRate,
-      formattedRate: `${Math.round(clampedRate)}%`,
-      utilized: safeUtilized,
-      potential: safePotential,
-      utilizedDisplay: formatCurrency(safeUtilized),
-      potentialDisplay: formatCurrency(safePotential)
+      formattedRate: `${utilizationPercentFormatter.format(clampedRate)}%`,
+      accessibleLabel: `${utilizationPercentFormatter.format(clampedRate)}% utilization rate`
     }
   })
   return entries.sort((a, b) => b.rate - a.rate)
@@ -3547,8 +3616,15 @@ onMounted(async () => {
                   Distribution of annual fees across your portfolio.
                 </p>
               </header>
-              <div v-if="benefitsAnalysisFeePieData.length" class="analysis-card__visual">
-                <SimplePieChart :data="benefitsAnalysisFeePieData" aria-label="Annual fees by card" />
+              <div
+                v-if="benefitsAnalysisFeePieChart.series.length"
+                class="analysis-card__visual"
+              >
+                <DrilldownPieChart
+                  :series="benefitsAnalysisFeePieChart.series"
+                  :drilldown-series="benefitsAnalysisFeePieChart.drilldown"
+                  aria-label="Annual fees by card"
+                />
               </div>
               <p v-else class="analysis-empty">No annual fees recorded yet.</p>
             </article>
@@ -3642,13 +3718,19 @@ onMounted(async () => {
                     <tr v-for="row in benefitsAnalysisUtilizationRows" :key="row.label">
                       <th scope="row">
                         <span class="analysis-utilization-card-name">{{ row.label }}</span>
-                        <span class="analysis-utilization-subtext">
-                          {{ row.utilizedDisplay }} of {{ row.potentialDisplay }} utilized
-                        </span>
                       </th>
                       <td>
-                        <div class="analysis-utilization-bar">
-                          <div class="analysis-utilization-bar__fill" :style="{ width: `${row.rate}%` }"></div>
+                        <div
+                          class="analysis-utilization-progress"
+                          role="img"
+                          :aria-label="row.accessibleLabel"
+                        >
+                          <div class="analysis-utilization-progress__track">
+                            <div
+                              class="analysis-utilization-progress__fill"
+                              :style="{ width: `${row.rate}%` }"
+                            ></div>
+                          </div>
                         </div>
                       </td>
                       <td class="analysis-utilization-rate">{{ row.formattedRate }}</td>

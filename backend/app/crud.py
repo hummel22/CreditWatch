@@ -40,7 +40,13 @@ from .schemas import normalise_window_values
 
 
 def create_credit_card(session: Session, payload: CreditCardCreate) -> CreditCard:
-    card = CreditCard(**payload.model_dump())
+    max_order_query = select(func.max(CreditCard.display_order))
+    max_order_result = session.exec(max_order_query).one()
+    if isinstance(max_order_result, tuple):
+        max_order_result = max_order_result[0]
+    max_order = max_order_result if isinstance(max_order_result, (int, float)) else None
+    next_order = 0 if max_order is None else int(max_order) + 1
+    card = CreditCard(**payload.model_dump(), display_order=next_order)
     session.add(card)
     session.commit()
     session.refresh(card)
@@ -63,8 +69,51 @@ def delete_credit_card(session: Session, card: CreditCard) -> None:
 
 
 def list_credit_cards(session: Session) -> List[CreditCard]:
-    statement = select(CreditCard).order_by(CreditCard.created_at)
+    statement = select(CreditCard).order_by(
+        CreditCard.display_order, CreditCard.created_at, CreditCard.id
+    )
     return session.exec(statement).all()
+
+
+def reorder_credit_cards(session: Session, ordered_ids: Sequence[int]) -> List[CreditCard]:
+    unique_ids = []
+    seen: set[int] = set()
+    for card_id in ordered_ids:
+        if card_id in seen:
+            raise ValueError("Card order cannot contain duplicates.")
+        seen.add(card_id)
+        unique_ids.append(card_id)
+
+    if not unique_ids:
+        return list_credit_cards(session)
+
+    total_result = session.exec(select(func.count(CreditCard.id))).one()
+    if isinstance(total_result, tuple):
+        total_result = total_result[0]
+    total_cards = int(total_result or 0)
+    if total_cards != len(unique_ids):
+        raise ValueError("Card order must include every card.")
+
+    cards = session.exec(
+        select(CreditCard).where(CreditCard.id.in_(unique_ids))
+    ).all()
+    if len(cards) != len(unique_ids):
+        raise ValueError("One or more cards could not be found.")
+
+    card_map = {card.id: card for card in cards if card.id is not None}
+    for position, card_id in enumerate(unique_ids):
+        card = card_map.get(card_id)
+        if card is None:
+            raise ValueError("One or more cards could not be found.")
+        card.display_order = position
+        session.add(card)
+
+    session.commit()
+
+    for card in card_map.values():
+        session.refresh(card)
+
+    return list_credit_cards(session)
 
 
 def get_credit_card(session: Session, card_id: int) -> Optional[CreditCard]:

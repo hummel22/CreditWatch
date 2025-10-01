@@ -253,6 +253,7 @@ class CreditCardUpdate(SQLModel):
 class CreditCardRead(CreditCardBase):
     id: int
     created_at: datetime
+    display_order: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -264,6 +265,16 @@ class CreditCardWithBenefits(CreditCardRead):
     net_position: float
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class CreditCardReorderRequest(SQLModel):
+    card_ids: List[int] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_unique_ids(self) -> "CreditCardReorderRequest":
+        if len(self.card_ids) != len(set(self.card_ids)):
+            raise ValueError("Card order cannot contain duplicates.")
+        return self
 
 
 class NotificationSettingsBase(SQLModel):

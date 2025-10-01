@@ -56,6 +56,7 @@ from .schemas import (
     BugRead,
     BugUpdate,
     CardTemplateExportRequest,
+    CreditCardReorderRequest,
     CreditCardCreate,
     CreditCardUpdate,
     CreditCardWithBenefits,
@@ -523,6 +524,18 @@ def create_card(
     return build_card_response(session, card)
 
 
+@app.put("/api/cards/order", response_model=List[CreditCardWithBenefits])
+def reorder_cards(
+    payload: CreditCardReorderRequest, session: Session = Depends(get_session)
+) -> List[CreditCardWithBenefits]:
+    try:
+        cards = crud.reorder_credit_cards(session, payload.card_ids)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    schedule_backup_after_change(app)
+    return [build_card_response(session, card) for card in cards]
+
+
 @app.put("/api/cards/{card_id}", response_model=CreditCardWithBenefits)
 def update_card(
     card_id: int, payload: CreditCardUpdate, session: Session = Depends(get_session)
@@ -864,6 +877,7 @@ def build_card_response(session: Session, card: CreditCard) -> CreditCardWithBen
         year_tracking_mode=card.year_tracking_mode,
         is_cancelled=card.is_cancelled,
         created_at=card.created_at,
+        display_order=card.display_order,
         benefits=benefits,
         potential_value=potential_value,
         utilized_value=utilized_value,

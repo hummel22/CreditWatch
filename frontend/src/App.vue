@@ -655,6 +655,9 @@ function formatNotificationCategoryLabel(key) {
   if (!key) {
     return ''
   }
+  if (key === 'cancelled_cards') {
+    return 'Cards to be Canceled'
+  }
   return key
     .toString()
     .replace(/[_-]+/g, ' ')
@@ -691,8 +694,8 @@ function formatNotificationItemTitle(item) {
   const cardName = item?.card_name || 'Card'
   if (type === 'cancelled_card') {
     return item?.account_name
-      ? `Cancelled card – ${cardName} (${item.account_name})`
-      : `Cancelled card – ${cardName}`
+      ? `Card to be Canceled – ${cardName} (${item.account_name})`
+      : `Card to be Canceled – ${cardName}`
   }
   const benefitName = item?.benefit_name || 'Benefit'
   return `${benefitName} (${cardName})`
@@ -891,6 +894,7 @@ function normaliseCard(card) {
     normalized.display_order = null
   }
   normalized.is_cancelled = Boolean(card.is_cancelled)
+  normalized.cancelled_at = card.cancelled_at || null
   if (Array.isArray(card.benefits)) {
     normalized.benefits = card.benefits.map((benefit) => ({
       ...benefit,

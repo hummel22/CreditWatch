@@ -515,7 +515,7 @@ function handleCardExport() {
         </div>
         <div class="card-due">
           Fee due {{ new Date(card.fee_due_date).toLocaleDateString() }}
-          <span v-if="card.is_cancelled" class="card-status card-status--cancelled">Cancelled</span>
+          <span v-if="card.is_cancelled" class="card-status card-status--cancelled">Card to be Canceled</span>
         </div>
       </div>
       <div class="card-header__meta">

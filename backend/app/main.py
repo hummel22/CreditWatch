@@ -876,6 +876,7 @@ def build_card_response(session: Session, card: CreditCard) -> CreditCardWithBen
         fee_due_date=card.fee_due_date,
         year_tracking_mode=card.year_tracking_mode,
         is_cancelled=card.is_cancelled,
+        cancelled_at=card.cancelled_at,
         created_at=card.created_at,
         display_order=card.display_order,
         benefits=benefits,

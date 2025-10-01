@@ -254,6 +254,7 @@ class CreditCardRead(CreditCardBase):
     id: int
     created_at: datetime
     display_order: Optional[int] = None
+    cancelled_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 

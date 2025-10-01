@@ -72,6 +72,22 @@ def _add_months(value: date, months: int) -> date:
     return date(year, month, day)
 
 
+def _resolve_next_fee_due_date(card: CreditCard, reference: date) -> Optional[date]:
+    due_date = card.fee_due_date
+    if not isinstance(due_date, date):
+        return None
+    due_month = due_date.month
+    due_day = due_date.day
+    candidate = date(reference.year, due_month, _safe_day(reference.year, due_month, due_day))
+    if candidate <= reference:
+        candidate = date(
+            reference.year + 1,
+            due_month,
+            _safe_day(reference.year + 1, due_month, due_day),
+        )
+    return candidate
+
+
 def _enumerate_frequency_windows(
     cycle_start: date, cycle_end: date, frequency: BenefitFrequency
 ) -> List[Tuple[date, date]]:
@@ -325,9 +341,18 @@ class NotificationService:
         )
         summaries: List[NotificationCancelledCardSummary] = []
         for card in session.exec(statement).all():
-            due_date = card.fee_due_date
-            if not isinstance(due_date, date):
+            reference = (
+                card.cancelled_at.date()
+                if isinstance(card.cancelled_at, datetime)
+                else target
+            )
+            due_date = _resolve_next_fee_due_date(card, reference)
+            if due_date is None:
                 continue
+            if due_date < target:
+                due_date = _resolve_next_fee_due_date(card, target)
+                if due_date is None:
+                    continue
             reminder_start = due_date - timedelta(days=15)
             if target < reminder_start:
                 continue
@@ -376,7 +401,7 @@ class NotificationService:
         cancelled_section = categories.get("cancelled_cards")
         if cancelled_section:
             sections.append(
-                "Cancelled cards approaching annual fees:\n"
+                "Cards to be Canceled approaching annual fees:\n"
                 + "\n".join(self._format_cancelled_line(item) for item in cancelled_section)
             )
         return "\n\n".join(sections)

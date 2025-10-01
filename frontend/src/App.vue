@@ -882,6 +882,14 @@ function normaliseCard(card) {
     year_tracking_mode:
       card.year_tracking_mode === 'anniversary' ? 'anniversary' : 'calendar'
   }
+  if (typeof card.display_order === 'number' && Number.isFinite(card.display_order)) {
+    normalized.display_order = card.display_order
+  } else if (card.display_order != null) {
+    const parsed = Number(card.display_order)
+    normalized.display_order = Number.isFinite(parsed) ? parsed : null
+  } else {
+    normalized.display_order = null
+  }
   normalized.is_cancelled = Boolean(card.is_cancelled)
   if (Array.isArray(card.benefits)) {
     normalized.benefits = card.benefits.map((benefit) => ({
@@ -897,7 +905,19 @@ function normaliseCards(collection) {
   if (!Array.isArray(collection)) {
     return []
   }
-  return collection.map((card) => normaliseCard(card))
+  const normalised = collection.map((card) => normaliseCard(card))
+  return normalised.sort((first, second) => {
+    const firstOrder = Number.isFinite(first.display_order)
+      ? first.display_order
+      : Number.MAX_SAFE_INTEGER
+    const secondOrder = Number.isFinite(second.display_order)
+      ? second.display_order
+      : Number.MAX_SAFE_INTEGER
+    if (firstOrder !== secondOrder) {
+      return firstOrder - secondOrder
+    }
+    return (first.id ?? 0) - (second.id ?? 0)
+  })
 }
 
 function resolveDefaultFrequency() {
@@ -1043,6 +1063,18 @@ function resolveActiveWindowIndexes(benefit) {
 }
 
 const showCardModal = ref(false)
+
+const cardSortModal = reactive({
+  open: false,
+  order: [],
+  saving: false,
+  error: ''
+})
+
+const cardSortDragState = reactive({
+  activeIndex: null,
+  overIndex: null
+})
 
 const newCard = reactive({
   card_name: '',
@@ -1241,6 +1273,83 @@ async function loadCards(options = {}) {
     error.value = 'Unable to load cards. Ensure the backend is running.'
   } finally {
     loading.value = false
+  }
+}
+
+function openCardSortModal() {
+  if (!cards.value.length) {
+    return
+  }
+  cardSortModal.order = cards.value.map((card) => ({
+    id: card.id,
+    card_name: card.card_name
+  }))
+  cardSortModal.error = ''
+  cardSortModal.open = true
+  cardSortDragState.activeIndex = null
+  cardSortDragState.overIndex = null
+}
+
+function closeCardSortModal() {
+  cardSortModal.open = false
+  cardSortModal.order = []
+  cardSortModal.error = ''
+  cardSortModal.saving = false
+  cardSortDragState.activeIndex = null
+  cardSortDragState.overIndex = null
+}
+
+function handleCardSortDragStart(index, event) {
+  cardSortDragState.activeIndex = index
+  cardSortDragState.overIndex = index
+  if (event?.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', String(index))
+  }
+}
+
+function handleCardSortDragEnter(index) {
+  if (cardSortDragState.activeIndex === null || index === cardSortDragState.activeIndex) {
+    cardSortDragState.overIndex = index
+    return
+  }
+  cardSortDragState.overIndex = index
+  const updated = [...cardSortModal.order]
+  const [moved] = updated.splice(cardSortDragState.activeIndex, 1)
+  updated.splice(index, 0, moved)
+  cardSortModal.order = updated
+  cardSortDragState.activeIndex = index
+}
+
+function handleCardSortDragLeave(index) {
+  if (cardSortDragState.overIndex === index) {
+    cardSortDragState.overIndex = null
+  }
+}
+
+function handleCardSortDragEnd() {
+  cardSortDragState.activeIndex = null
+  cardSortDragState.overIndex = null
+}
+
+async function submitCardSortOrder() {
+  if (!cardSortModal.order.length) {
+    closeCardSortModal()
+    return
+  }
+  const payload = {
+    card_ids: cardSortModal.order.map((entry) => entry.id)
+  }
+  cardSortModal.saving = true
+  cardSortModal.error = ''
+  try {
+    const response = await apiClient.put('/api/cards/order', payload)
+    await refreshCards({ preserveScroll: true, data: response.data })
+    closeCardSortModal()
+  } catch (err) {
+    cardSortModal.error = extractErrorMessage(err, 'Unable to save card order.')
+  } finally {
+    cardSortModal.saving = false
   }
 }
 
@@ -2640,7 +2749,21 @@ onMounted(async () => {
 
         <section class="cards-section">
           <div class="content-constrained">
-            <h2 class="section-title">Your cards</h2>
+            <div class="section-header">
+              <div>
+                <h2 class="section-title">Your cards</h2>
+              </div>
+              <div v-if="!loading && cards.length" class="section-actions">
+                <button
+                  class="primary-button secondary"
+                  type="button"
+                  :disabled="cards.length < 2"
+                  @click="openCardSortModal"
+                >
+                  Sort cards
+                </button>
+              </div>
+            </div>
             <p v-if="loading" class="empty-state">Loading your cards...</p>
             <p v-else-if="!cards.length" class="empty-state">
               No cards yet. Add your first credit card to begin tracking benefits.
@@ -3167,6 +3290,63 @@ onMounted(async () => {
       </div>
     </main>
   </div>
+
+  <BaseModal
+    :open="cardSortModal.open"
+    title="Sort credit cards"
+    @close="closeCardSortModal"
+  >
+    <p class="helper-text subtle-text">
+      Drag and drop the cards below to update their display order.
+    </p>
+    <ul class="card-sort-list" role="list">
+      <li
+        v-for="(entry, index) in cardSortModal.order"
+        :key="entry.id"
+        class="card-sort-item"
+        :class="{
+          'is-active': cardSortDragState.activeIndex === index,
+          'is-over': cardSortDragState.overIndex === index
+        }"
+        draggable="true"
+        :aria-grabbed="cardSortDragState.activeIndex === index ? 'true' : 'false'"
+        @dragstart="(event) => handleCardSortDragStart(index, event)"
+        @dragenter.prevent="handleCardSortDragEnter(index)"
+        @dragover.prevent
+        @dragleave="handleCardSortDragLeave(index)"
+        @dragend="handleCardSortDragEnd"
+        @drop.prevent="handleCardSortDragEnd"
+      >
+        <span class="card-sort-handle" aria-hidden="true">
+          <svg viewBox="0 0 20 20" fill="currentColor">
+            <circle cx="6" cy="5" r="1.5" />
+            <circle cx="6" cy="10" r="1.5" />
+            <circle cx="6" cy="15" r="1.5" />
+            <circle cx="14" cy="5" r="1.5" />
+            <circle cx="14" cy="10" r="1.5" />
+            <circle cx="14" cy="15" r="1.5" />
+          </svg>
+        </span>
+        <span class="card-sort-index">{{ index + 1 }}</span>
+        <span class="card-sort-name">{{ entry.card_name }}</span>
+        <span class="sr-only">Drag to reorder</span>
+      </li>
+    </ul>
+    <p v-if="cardSortModal.error" class="helper-text error-text">{{ cardSortModal.error }}</p>
+    <template #footer>
+      <button class="primary-button secondary" type="button" @click="closeCardSortModal">
+        Cancel
+      </button>
+      <button
+        class="primary-button"
+        type="button"
+        :disabled="cardSortModal.saving"
+        @click="submitCardSortOrder"
+      >
+        {{ cardSortModal.saving ? 'Saving…' : 'Save order' }}
+      </button>
+    </template>
+  </BaseModal>
 
   <BaseModal :open="showCardModal" title="Add a credit card" @close="closeCardModal">
     <form @submit.prevent="handleCreateCard">

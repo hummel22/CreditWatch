@@ -77,6 +77,7 @@ def _run_database_initialisation_steps() -> None:
     ensure_benefit_notification_column()
     ensure_card_year_tracking_column()
     ensure_card_cancelled_column()
+    ensure_card_display_order_column()
 
 
 @contextmanager
@@ -265,6 +266,29 @@ def ensure_card_cancelled_column() -> None:
             connection.exec_driver_sql(
                 "ALTER TABLE creditcard ADD COLUMN is_cancelled BOOLEAN NOT NULL DEFAULT 0"
             )
+
+
+def ensure_card_display_order_column() -> None:
+    """Ensure credit cards include a display order for manual sorting."""
+
+    with engine.connect() as connection:
+        existing_columns = {
+            row[1] for row in connection.exec_driver_sql("PRAGMA table_info(creditcard)")
+        }
+        if "display_order" in existing_columns:
+            return
+        connection.exec_driver_sql(
+            "ALTER TABLE creditcard ADD COLUMN display_order INTEGER"
+        )
+        rows = connection.exec_driver_sql(
+            "SELECT id FROM creditcard ORDER BY created_at, id"
+        ).fetchall()
+        for index, (card_id,) in enumerate(rows):
+            connection.exec_driver_sql(
+                "UPDATE creditcard SET display_order = ? WHERE id = ?",
+                (index, card_id),
+            )
+        connection.commit()
 
 
 def ensure_bug_table() -> None:

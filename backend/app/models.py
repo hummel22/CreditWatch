@@ -58,6 +58,12 @@ class CreditCard(SQLModel, table=True):
         default=False,
         description="Whether the card has been cancelled and should trigger reminders",
     )
+    display_order: Optional[int] = Field(
+        default=None,
+        index=True,
+        description="Order used when presenting cards in the dashboard",
+        ge=0,
+    )
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class Benefit(SQLModel, table=True):

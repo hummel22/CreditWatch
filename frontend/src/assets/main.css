@@ -1055,6 +1055,72 @@ textarea:focus {
   margin-top: 1rem;
 }
 
+.card-sort-list {
+  list-style: none;
+  margin: 1.25rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.card-sort-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(248, 250, 252, 0.9);
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.06);
+  cursor: grab;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.card-sort-item:active {
+  cursor: grabbing;
+}
+
+.card-sort-item.is-active {
+  opacity: 0.92;
+  transform: scale(0.995);
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.18);
+}
+
+.card-sort-item.is-over {
+  border-color: rgba(99, 102, 241, 0.55);
+  background: rgba(224, 231, 255, 0.6);
+}
+
+.card-sort-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  color: #6366f1;
+}
+
+.card-sort-handle svg {
+  width: 100%;
+  height: 100%;
+}
+
+.card-sort-index {
+  min-width: 1.75rem;
+  text-align: center;
+  font-weight: 600;
+  color: #475569;
+}
+
+.card-sort-name {
+  flex: 1;
+  font-weight: 500;
+  color: #0f172a;
+  word-break: break-word;
+}
+
 .primary-button.small {
   padding: 0.4rem 0.85rem;
   font-size: 0.9rem;

@@ -32,6 +32,13 @@ class YearTrackingMode(str, Enum):
     anniversary = "anniversary"
 
 
+class ThemeMode(str, Enum):
+    """Supported interface theme variants."""
+
+    light = "light"
+    dark = "dark"
+
+
 class CreditCard(SQLModel, table=True):
     """Credit card stored in the system."""
 
@@ -201,5 +208,15 @@ class Bug(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     completed_at: Optional[datetime] = Field(
         default=None, description="When the bug was marked complete"
+    )
+
+
+class InterfaceSettings(SQLModel, table=True):
+    """Global interface preferences shared across the application."""
+
+    id: Optional[int] = Field(default=1, primary_key=True)
+    theme_mode: ThemeMode = Field(
+        default=ThemeMode.light,
+        description="Preferred UI theme for all users",
     )
 

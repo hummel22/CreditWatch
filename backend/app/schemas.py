@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Sequence
 from pydantic import ConfigDict, field_validator, model_validator
 from sqlmodel import Field, SQLModel
 
-from .models import BenefitFrequency, BenefitType, YearTrackingMode
+from .models import BenefitFrequency, BenefitType, ThemeMode, YearTrackingMode
 
 
 WINDOW_COUNT_BY_FREQUENCY: dict[BenefitFrequency, int] = {
@@ -118,6 +118,20 @@ class BugRead(BugBase):
     completed_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class InterfaceSettingsBase(SQLModel):
+    theme_mode: ThemeMode = Field(default=ThemeMode.light)
+
+
+class InterfaceSettingsRead(InterfaceSettingsBase):
+    id: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class InterfaceSettingsUpdate(SQLModel):
+    theme_mode: ThemeMode
 
 
 class BenefitBase(SQLModel):

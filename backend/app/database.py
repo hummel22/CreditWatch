@@ -13,7 +13,7 @@ from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, SQLModel, create_engine
 
 from .migrations import run_migrations
-from .models import Bug
+from .models import Bug, InterfaceSettings
 
 logger = logging.getLogger("creditwatch.database")
 
@@ -81,6 +81,7 @@ def _run_database_initialisation_steps() -> None:
     ensure_card_cancelled_column()
     ensure_card_cancelled_timestamp_column()
     ensure_card_display_order_column()
+    ensure_interface_settings_row()
 
 
 @contextmanager
@@ -305,6 +306,17 @@ def ensure_card_display_order_column() -> None:
                 (index, card_id),
             )
         connection.commit()
+
+
+def ensure_interface_settings_row() -> None:
+    """Ensure the interface settings table exists with a default record."""
+
+    with Session(engine) as session:
+        settings = session.get(InterfaceSettings, 1)
+        if settings is None:
+            settings = InterfaceSettings(id=1)
+            session.add(settings)
+            session.commit()
 
 
 def ensure_bug_table() -> None:

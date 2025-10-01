@@ -47,6 +47,8 @@ from .schemas import (
     BenefitUsageUpdate,
     BenefitWindowExclusionCreate,
     BenefitWindowExclusionRead,
+    InterfaceSettingsRead,
+    InterfaceSettingsUpdate,
     BackupConnectionTestRequest,
     BackupConnectionTestResult,
     BackupSettingsRead,
@@ -134,6 +136,18 @@ async def on_shutdown() -> None:
 @app.get("/api/health")
 def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/interface/settings", response_model=InterfaceSettingsRead)
+def read_interface_settings(session: Session = Depends(get_session)) -> InterfaceSettingsRead:
+    return crud.get_interface_settings(session)
+
+
+@app.put("/api/interface/settings", response_model=InterfaceSettingsRead)
+def write_interface_settings(
+    payload: InterfaceSettingsUpdate, session: Session = Depends(get_session)
+) -> InterfaceSettingsRead:
+    return crud.update_interface_settings(session, payload)
 
 
 @app.get("/api/bugs", response_model=List[BugRead])

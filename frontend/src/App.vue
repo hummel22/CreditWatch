@@ -38,6 +38,30 @@ const viewToPathMap = {
   admin: '/admin'
 }
 
+const interfaceSettings = reactive({
+  id: null,
+  theme_mode: 'light'
+})
+
+const interfaceSettingsLoading = ref(false)
+const interfaceSettingsSaving = ref(false)
+const interfaceSettingsError = ref('')
+
+const themeMode = computed(() =>
+  interfaceSettings.theme_mode === 'dark' ? 'dark' : 'light'
+)
+const isDarkMode = computed(() => themeMode.value === 'dark')
+const themeStatusLabel = computed(() => (isDarkMode.value ? 'Dark mode' : 'Light mode'))
+const themeToggleLabel = computed(() =>
+  isDarkMode.value ? 'Switch to light mode' : 'Switch to dark mode'
+)
+const themeToggleHint = computed(() =>
+  interfaceSettingsSaving.value ? 'Saving…' : themeToggleLabel.value
+)
+const isThemeToggleDisabled = computed(
+  () => interfaceSettingsLoading.value || interfaceSettingsSaving.value
+)
+
 function normalizePathname(pathname) {
   if (!pathname || pathname === '/') {
     return '/'
@@ -59,6 +83,25 @@ function resolveViewFromPath(pathname) {
 function resolvePathFromView(view) {
   return viewToPathMap[view] ?? '/'
 }
+
+function applyTheme(mode) {
+  if (typeof document === 'undefined') {
+    return
+  }
+  const resolvedMode = mode === 'dark' ? 'dark' : 'light'
+  document.documentElement.setAttribute('data-theme', resolvedMode)
+  if (document.body) {
+    document.body.setAttribute('data-theme', resolvedMode)
+  }
+}
+
+watch(
+  themeMode,
+  (mode) => {
+    applyTheme(mode)
+  },
+  { immediate: true }
+)
 
 const notificationSettings = reactive({
   id: null,
@@ -512,6 +555,59 @@ function extractErrorMessage(err, fallback) {
     return err.message
   }
   return fallback
+}
+
+async function loadInterfaceSettings() {
+  interfaceSettingsLoading.value = true
+  interfaceSettingsError.value = ''
+  try {
+    const response = await apiClient.get('/api/interface/settings')
+    if (response?.data) {
+      interfaceSettings.id = response.data.id ?? null
+      interfaceSettings.theme_mode = response.data.theme_mode ?? 'light'
+    }
+  } catch (err) {
+    interfaceSettingsError.value = 'Unable to load theme preference.'
+    console.error('Failed to load interface settings', err)
+  } finally {
+    interfaceSettingsLoading.value = false
+  }
+}
+
+async function saveThemeMode(mode) {
+  interfaceSettingsSaving.value = true
+  interfaceSettingsError.value = ''
+  try {
+    const response = await apiClient.put('/api/interface/settings', {
+      theme_mode: mode
+    })
+    if (response?.data) {
+      interfaceSettings.id = response.data.id ?? interfaceSettings.id
+      interfaceSettings.theme_mode = response.data.theme_mode ?? mode
+    } else {
+      interfaceSettings.theme_mode = mode
+    }
+  } catch (err) {
+    interfaceSettingsError.value = 'Unable to save theme preference.'
+    console.error('Failed to update interface settings', err)
+    throw err
+  } finally {
+    interfaceSettingsSaving.value = false
+  }
+}
+
+async function toggleThemeMode() {
+  if (isThemeToggleDisabled.value) {
+    return
+  }
+  const previousMode = interfaceSettings.theme_mode
+  const nextMode = previousMode === 'dark' ? 'light' : 'dark'
+  interfaceSettings.theme_mode = nextMode
+  try {
+    await saveThemeMode(nextMode)
+  } catch (err) {
+    interfaceSettings.theme_mode = previousMode
+  }
 }
 
 async function loadNotificationSettings() {
@@ -2792,6 +2888,7 @@ function closeHistoryModal() {
 }
 
 onMounted(async () => {
+  await loadInterfaceSettings()
   await loadNotificationSettings()
   await loadBackupSettings()
   await loadFrequencies()
@@ -2869,6 +2966,54 @@ onMounted(async () => {
           {{ item.label }}
         </button>
       </nav>
+      <div class="nav-drawer__footer">
+        <button
+          class="theme-toggle"
+          type="button"
+          role="switch"
+          :aria-checked="isDarkMode"
+          :aria-label="themeToggleLabel"
+          :disabled="isThemeToggleDisabled"
+          @click="toggleThemeMode"
+        >
+          <span class="theme-toggle__icon" aria-hidden="true">
+            <svg
+              v-if="isDarkMode"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                d="M17.25 12.5a6.75 6.75 0 0 1-6.75 6.75a6.74 6.74 0 0 1-6.55-5.27a.75.75 0 0 1 1.14-.79a4.5 4.5 0 0 0 5.98-5.98a.75.75 0 0 1-.79-1.14a6.74 6.74 0 0 1 7.44 10.43Z"
+              />
+            </svg>
+            <svg
+              v-else
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                d="M10 4.5a.75.75 0 0 1 .75-.75h.5a.75.75 0 0 1 0 1.5h-.5A.75.75 0 0 1 10 4.5Zm5.5 5.5a.75.75 0 0 1 .75-.75v-.5a.75.75 0 0 1 1.5 0v.5a.75.75 0 0 1-.75.75Zm-5.5 5.5a.75.75 0 0 1 .75.75v.5a.75.75 0 0 1-1.5 0v-.5a.75.75 0 0 1 .75-.75Zm-5.5-5.5a.75.75 0 0 1-.75.75h-.5a.75.75 0 0 1 0-1.5h.5a.75.75 0 0 1 .75.75Zm9.22-3.97a.75.75 0 1 1 1.06-1.06l.36.36a.75.75 0 1 1-1.06 1.06Zm0 7.94a.75.75 0 1 1 1.06 1.06l-.36.36a.75.75 0 1 1-1.06-1.06Zm-7.94 0a.75.75 0 0 1 0 1.06l-.36.36a.75.75 0 0 1-1.06-1.06l.36-.36a.75.75 0 0 1 1.06 0Zm0-7.94l-.36-.36a.75.75 0 0 1 1.06-1.06l.36.36a.75.75 0 1 1-1.06 1.06ZM10 6.5a3.5 3.5 0 1 0 0 7a3.5 3.5 0 0 0 0-7Z"
+              />
+            </svg>
+          </span>
+          <span class="theme-toggle__labels">
+            <span class="theme-toggle__status">{{ themeStatusLabel }}</span>
+            <span class="theme-toggle__hint">{{ themeToggleHint }}</span>
+          </span>
+          <span
+            class="theme-toggle__switch"
+            :class="{ 'theme-toggle__switch--on': isDarkMode }"
+            aria-hidden="true"
+          >
+            <span class="theme-toggle__thumb"></span>
+          </span>
+        </button>
+        <p v-if="interfaceSettingsError" class="theme-toggle__error">
+          {{ interfaceSettingsError }}
+        </p>
+      </div>
     </aside>
     <main class="app-main">
       <section class="hero content-constrained">

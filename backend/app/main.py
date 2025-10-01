@@ -799,6 +799,12 @@ def build_card_response(session: Session, card: CreditCard) -> CreditCardWithBen
             else []
         )
         window_exclusions = context.get("window_exclusions") or []
+        reference_date = context.get("reference_date")
+        if not isinstance(reference_date, date):
+            reference_date = None
+        current_window_deleted = _is_reference_window_deleted(
+            reference_date, window_exclusions
+        )
         current_window_total = window_total_tuple[0] if window_total_tuple else 0.0
         expiration = _compute_benefit_expiration(benefit, context, default_cycle_end)
         current_window_value = _resolve_current_window_value(benefit, window_index)
@@ -823,6 +829,7 @@ def build_card_response(session: Session, card: CreditCard) -> CreditCardWithBen
                 cycle_target_value,
                 active_window_indexes,
                 window_exclusions,
+                current_window_deleted,
             )
         )
 
@@ -1100,6 +1107,24 @@ def _select_window_for_reference(
     return None
 
 
+def _is_reference_window_deleted(
+    reference: date | None,
+    exclusions: Sequence[
+        BenefitWindowExclusion | BenefitWindowExclusionRead
+    ],
+) -> bool:
+    if not exclusions:
+        return False
+    reference_date = reference or date.today()
+    for exclusion in exclusions:
+        start = getattr(exclusion, "window_start", None)
+        end = getattr(exclusion, "window_end", None)
+        if isinstance(start, date) and isinstance(end, date):
+            if start <= reference_date < end:
+                return True
+    return False
+
+
 def _current_frequency_window(
     cycle_start: date,
     cycle_end: date,
@@ -1175,6 +1200,7 @@ def gather_benefit_metrics(
                     "cycle_end": cycle_end,
                     "cycle_label": cycle_label,
                     "cycle_total": cycle_totals.get(benefit.id, (0.0, 0)),
+                    "reference_date": reference_date,
                 }
             )
 
@@ -1362,6 +1388,12 @@ def build_enriched_benefit(
         else []
     )
     window_exclusions = context.get("window_exclusions") or []
+    reference_date = context.get("reference_date")
+    if not isinstance(reference_date, date):
+        reference_date = None
+    current_window_deleted = _is_reference_window_deleted(
+        reference_date, window_exclusions
+    )
     current_window_total = window_total_tuple[0] if window_total_tuple else 0.0
     expiration = _compute_benefit_expiration(benefit, context, default_cycle_end)
     current_window_value = _resolve_current_window_value(benefit, window_index)
@@ -1385,6 +1417,7 @@ def build_enriched_benefit(
         cycle_target_value,
         active_window_indexes,
         window_exclusions,
+        current_window_deleted,
     )
 
 
@@ -1402,6 +1435,7 @@ def build_benefit_read(
     cycle_target_value: Optional[float],
     active_window_indexes: Sequence[int] | None,
     window_exclusions: Sequence[BenefitWindowExclusion] | Sequence[BenefitWindowExclusionRead],
+    current_window_deleted: bool,
 ) -> BenefitRead:
     total, count = redemption_summary or (0.0, 0)
     cycle_value = float(cycle_total)
@@ -1461,6 +1495,7 @@ def build_benefit_read(
         missed_window_value=0.0,
         active_window_indexes=active_indexes,
         window_exclusions=exclusion_models,
+        current_window_deleted=current_window_deleted,
     )
 
     if benefit_read.type in (BenefitType.standard, BenefitType.incremental):
@@ -1477,6 +1512,9 @@ def _calculate_missed_window_potential(
     benefit: BenefitRead, cycle_total: float
 ) -> float:
     """Estimate potential lost from expired windows without redemptions."""
+
+    if getattr(benefit, "current_window_deleted", False):
+        return 0.0
 
     window_index = getattr(benefit, "current_window_index", None)
     window_count = getattr(benefit, "cycle_window_count", None)

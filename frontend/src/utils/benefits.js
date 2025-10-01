@@ -49,6 +49,11 @@ export function isBenefitCompleted(benefit) {
 }
 
 export function compareBenefits(a, b) {
+  const deletedA = Boolean(a?.current_window_deleted)
+  const deletedB = Boolean(b?.current_window_deleted)
+  if (deletedA !== deletedB) {
+    return deletedA ? 1 : -1
+  }
   const completedA = isBenefitCompleted(a)
   const completedB = isBenefitCompleted(b)
   if (completedA !== completedB) {

@@ -55,6 +55,12 @@ def create_credit_card(session: Session, payload: CreditCardCreate) -> CreditCar
 
 def update_credit_card(session: Session, card: CreditCard, payload: CreditCardUpdate) -> CreditCard:
     update_data = payload.model_dump(exclude_unset=True)
+    if "is_cancelled" in update_data:
+        requested_cancelled = bool(update_data["is_cancelled"])
+        if requested_cancelled and not card.is_cancelled:
+            update_data.setdefault("cancelled_at", datetime.utcnow())
+        elif not requested_cancelled and card.is_cancelled:
+            update_data.setdefault("cancelled_at", None)
     for key, value in update_data.items():
         setattr(card, key, value)
     session.add(card)

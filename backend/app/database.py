@@ -77,6 +77,7 @@ def _run_database_initialisation_steps() -> None:
     ensure_benefit_notification_column()
     ensure_card_year_tracking_column()
     ensure_card_cancelled_column()
+    ensure_card_cancelled_timestamp_column()
     ensure_card_display_order_column()
 
 
@@ -265,6 +266,19 @@ def ensure_card_cancelled_column() -> None:
         if "is_cancelled" not in existing_columns:
             connection.exec_driver_sql(
                 "ALTER TABLE creditcard ADD COLUMN is_cancelled BOOLEAN NOT NULL DEFAULT 0"
+            )
+
+
+def ensure_card_cancelled_timestamp_column() -> None:
+    """Ensure credit cards store when cancellation was requested."""
+
+    with engine.connect() as connection:
+        existing_columns = {
+            row[1] for row in connection.exec_driver_sql("PRAGMA table_info(creditcard)")
+        }
+        if "cancelled_at" not in existing_columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE creditcard ADD COLUMN cancelled_at TIMESTAMP"
             )
 
 

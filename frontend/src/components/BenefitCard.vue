@@ -529,7 +529,7 @@ const showUsedValue = computed(() => {
           </template>
         </strong>
         <span v-if="showUsedValue" class="benefit-used">
-          (${{ usedValueLabel }} used)
+          (${{ usedValueLabel }})
         </span>
       </div>
       <div class="benefit-actions">

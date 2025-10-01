@@ -5,6 +5,9 @@ import BaseModal from './components/BaseModal.vue'
 import BugTracker from './components/BugTracker.vue'
 import BenefitCard from './components/BenefitCard.vue'
 import CreditCardList from './components/CreditCardList.vue'
+import SimpleBarChart from './components/charts/SimpleBarChart.vue'
+import SimpleLineChart from './components/charts/SimpleLineChart.vue'
+import SimplePieChart from './components/charts/SimplePieChart.vue'
 import {
   buildCardCycles,
   computeCardCycle,
@@ -27,6 +30,7 @@ const navDrawerOpen = ref(false)
 const navItems = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'benefits', label: 'Benefits' },
+  { id: 'benefits-analysis', label: 'Benefits analysis' },
   { id: 'bugs', label: 'Bug Tracker' },
   { id: 'admin', label: 'Admin' }
 ]
@@ -34,6 +38,7 @@ const navItems = [
 const viewToPathMap = {
   dashboard: '/',
   benefits: '/benefits',
+  'benefits-analysis': '/benefits-analysis',
   bugs: '/bugs',
   admin: '/admin'
 }
@@ -203,6 +208,7 @@ const notificationTestResults = reactive({
 const scrollPositions = reactive({
   dashboard: 0,
   benefits: 0,
+  'benefits-analysis': 0,
   bugs: 0,
   admin: 0
 })
@@ -279,9 +285,12 @@ const confirmDialog = reactive({
 
 const isDashboardView = computed(() => currentView.value === 'dashboard')
 const isBenefitsView = computed(() => currentView.value === 'benefits')
+const isBenefitsAnalysisView = computed(() => currentView.value === 'benefits-analysis')
 const isBugTrackerView = computed(() => currentView.value === 'bugs')
 const isAdminView = computed(() => currentView.value === 'admin')
-const showNewCardButton = computed(() => isDashboardView.value || isBenefitsView.value)
+const showNewCardButton = computed(
+  () => isDashboardView.value || isBenefitsView.value || isBenefitsAnalysisView.value
+)
 const showAdminTemplateButton = computed(() => isAdminView.value)
 
 function updateHistoryState(view, { replace = false } = {}) {
@@ -338,6 +347,16 @@ watch(currentView, () => {
   error.value = ''
   navDrawerOpen.value = false
 })
+
+watch(
+  currentView,
+  (view) => {
+    if (view === 'benefits-analysis') {
+      ensureBenefitsAnalysisData()
+    }
+  },
+  { immediate: true }
+)
 
 onMounted(() => {
   const initialView = resolveViewFromPath(window.location.pathname)
@@ -1468,6 +1487,347 @@ const filteredBenefitsCollection = computed(() => {
   })
 })
 
+const ANALYSIS_COLOR_PALETTE = [
+  '#4f46e5',
+  '#6366f1',
+  '#0ea5e9',
+  '#22c55e',
+  '#14b8a6',
+  '#f97316',
+  '#ec4899',
+  '#a855f7'
+]
+
+function getAnalysisColor(index) {
+  if (typeof index !== 'number' || index < 0) {
+    return ANALYSIS_COLOR_PALETTE[0]
+  }
+  return ANALYSIS_COLOR_PALETTE[index % ANALYSIS_COLOR_PALETTE.length]
+}
+
+function formatCurrency(value, options = {}) {
+  const { minimumFractionDigits = 0, maximumFractionDigits = 0 } = options
+  const parsed = Number(value ?? 0)
+  const safeValue = Number.isFinite(parsed) ? parsed : 0
+  return new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits,
+    maximumFractionDigits
+  }).format(safeValue)
+}
+
+const benefitsAnalysisState = reactive({
+  loading: false,
+  loaded: false,
+  error: '',
+  warning: ''
+})
+
+const benefitsAnalysisRedemptions = ref(new Map())
+
+const benefitsAnalysisActiveCards = computed(() =>
+  cards.value.filter((card) => !card.is_cancelled)
+)
+
+const benefitsAnalysisTotals = computed(() => {
+  const annualFees = benefitsAnalysisActiveCards.value.reduce(
+    (acc, card) => acc + Number(card.annual_fee ?? 0),
+    0
+  )
+  const utilized = benefitsAnalysisActiveCards.value.reduce(
+    (acc, card) => acc + Number(card.utilized_value ?? 0),
+    0
+  )
+  const potential = benefitsAnalysisActiveCards.value.reduce(
+    (acc, card) => acc + Number(card.potential_value ?? 0),
+    0
+  )
+  return {
+    annualFees,
+    utilized,
+    potential,
+    net: utilized - annualFees
+  }
+})
+
+const benefitsAnalysisFeePieData = computed(() =>
+  benefitsAnalysisActiveCards.value.map((card, index) => {
+    const fee = Number(card.annual_fee ?? 0)
+    const value = Number.isFinite(fee) ? fee : 0
+    return {
+      label: card.card_name,
+      value,
+      color: getAnalysisColor(index),
+      displayValue: formatCurrency(value)
+    }
+  })
+)
+
+const benefitsAnalysisMonthlyFees = computed(() => {
+  const monthly = Array.from({ length: 12 }, () => 0)
+  for (const card of benefitsAnalysisActiveCards.value) {
+    const fee = Number(card.annual_fee ?? 0)
+    if (!Number.isFinite(fee) || fee <= 0) {
+      continue
+    }
+    const dueDate = parseDate(card.fee_due_date)
+    if (dueDate instanceof Date) {
+      const monthIndex = dueDate.getMonth()
+      if (monthIndex >= 0 && monthIndex < monthly.length) {
+        monthly[monthIndex] += fee
+      }
+    }
+  }
+  return monthly
+})
+
+const benefitsAnalysisMonthlyFeeBars = computed(() =>
+  MONTH_LABELS.map((label, index) => {
+    const value = Number(benefitsAnalysisMonthlyFees.value[index] ?? 0)
+    return {
+      label: label.slice(0, 3),
+      value,
+      color: '#6366f1',
+      displayValue: formatCurrency(value)
+    }
+  })
+)
+
+const benefitsAnalysisBenefitEntries = computed(() => {
+  const entries = []
+  for (const card of benefitsAnalysisActiveCards.value) {
+    if (!Array.isArray(card.benefits)) {
+      continue
+    }
+    for (const benefit of card.benefits) {
+      entries.push({ card, benefit })
+    }
+  }
+  return entries
+})
+
+const benefitsAnalysisMonthlyBenefits = computed(() => {
+  const monthly = Array.from({ length: 12 }, () => 0)
+  const redemptions = benefitsAnalysisRedemptions.value
+  const currentYear = new Date().getFullYear()
+  for (const entries of redemptions.values()) {
+    if (!Array.isArray(entries)) {
+      continue
+    }
+    for (const entry of entries) {
+      const occurred = parseDate(entry?.occurred_on)
+      const amount = Number(entry?.amount ?? 0)
+      if (!occurred || !Number.isFinite(amount) || occurred.getFullYear() !== currentYear) {
+        continue
+      }
+      const monthIndex = occurred.getMonth()
+      if (monthIndex >= 0 && monthIndex < monthly.length) {
+        monthly[monthIndex] += amount
+      }
+    }
+  }
+  for (const { benefit } of benefitsAnalysisBenefitEntries.value) {
+    if (benefit?.type !== 'standard' || !benefit.is_used || !benefit.used_at) {
+      continue
+    }
+    const entries = redemptions.get(benefit.id)
+    if (entries && entries.length) {
+      continue
+    }
+    const usedAt = parseDate(benefit.used_at)
+    if (!usedAt || usedAt.getFullYear() !== currentYear) {
+      continue
+    }
+    const amount = getCycleTargetValue(benefit)
+    if (amount > 0) {
+      const monthIndex = usedAt.getMonth()
+      if (monthIndex >= 0 && monthIndex < monthly.length) {
+        monthly[monthIndex] += amount
+      }
+    }
+  }
+  return monthly
+})
+
+const benefitsAnalysisLinePoints = computed(() =>
+  MONTH_LABELS.map((label, index) => ({
+    label: label.slice(0, 3),
+    values: {
+      benefits: Number(benefitsAnalysisMonthlyBenefits.value[index] ?? 0),
+      fees: Number(benefitsAnalysisMonthlyFees.value[index] ?? 0)
+    }
+  }))
+)
+
+const benefitsAnalysisLineSeries = [
+  { key: 'benefits', label: 'Benefits redeemed', color: '#22c55e' },
+  { key: 'fees', label: 'Annual fees', color: '#6366f1' }
+]
+
+const benefitsAnalysisLineMax = computed(() => {
+  const values = []
+  for (const point of benefitsAnalysisLinePoints.value) {
+    values.push(Number(point.values.benefits ?? 0))
+    values.push(Number(point.values.fees ?? 0))
+  }
+  const max = values.reduce((acc, value) => Math.max(acc, value), 0)
+  return max > 0 ? max : 0
+})
+
+const benefitsAnalysisUtilizedByCard = computed(() => {
+  const entries = benefitsAnalysisActiveCards.value.map((card, index) => {
+    const utilized = Number(card.utilized_value ?? 0)
+    const value = Number.isFinite(utilized) ? utilized : 0
+    return {
+      label: card.card_name,
+      value,
+      color: getAnalysisColor(index),
+      displayValue: formatCurrency(value)
+    }
+  })
+  return entries
+    .filter((entry) => entry.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 8)
+})
+
+const benefitsAnalysisUtilizationRate = computed(() => {
+  const entries = benefitsAnalysisActiveCards.value.map((card, index) => {
+    const potential = Number(card.potential_value ?? 0)
+    const utilized = Number(card.utilized_value ?? 0)
+    const rate = potential > 0 ? (utilized / potential) * 100 : 0
+    const safeRate = Number.isFinite(rate) ? rate : 0
+    return {
+      label: card.card_name,
+      value: safeRate > 0 ? safeRate : 0,
+      color: getAnalysisColor(index),
+      displayValue: `${Math.round(safeRate > 0 ? safeRate : 0)}%`
+    }
+  })
+  return entries.sort((a, b) => b.value - a.value).slice(0, 8)
+})
+
+const BENEFIT_TYPE_LABELS = {
+  standard: 'Standard',
+  incremental: 'Incremental',
+  cumulative: 'Cumulative'
+}
+
+const benefitsAnalysisBenefitsByType = computed(() => {
+  const totals = new Map()
+  for (const { benefit } of benefitsAnalysisBenefitEntries.value) {
+    const type = benefit?.type || 'standard'
+    const amount = getCycleTargetValue(benefit)
+    const value = Number.isFinite(amount) ? amount : 0
+    totals.set(type, (totals.get(type) ?? 0) + value)
+  }
+  const sorted = Array.from(totals.entries()).sort((a, b) => b[1] - a[1])
+  return sorted.map(([type, value], index) => ({
+    label: BENEFIT_TYPE_LABELS[type] || type.charAt(0).toUpperCase() + type.slice(1),
+    value,
+    color: getAnalysisColor(index),
+    displayValue: formatCurrency(value)
+  }))
+})
+
+const benefitsAnalysisBenefitsByFrequency = computed(() => {
+  const counts = new Map()
+  for (const { benefit } of benefitsAnalysisBenefitEntries.value) {
+    const frequency = typeof benefit?.frequency === 'string' && benefit.frequency.trim()
+      ? benefit.frequency.trim()
+      : 'unspecified'
+    counts.set(frequency, (counts.get(frequency) ?? 0) + 1)
+  }
+  const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1])
+  return sorted.map(([frequency, count], index) => {
+    const label =
+      frequency === 'unspecified'
+        ? 'Unspecified'
+        : frequency.charAt(0).toUpperCase() + frequency.slice(1)
+    return {
+      label,
+      value: count,
+      color: getAnalysisColor(index),
+      displayValue: count.toLocaleString()
+    }
+  })
+})
+
+const benefitsAnalysisMissedValue = computed(() =>
+  benefitsAnalysisBenefitEntries.value.reduce(
+    (acc, { benefit }) => acc + Number(benefit?.missed_window_value ?? 0),
+    0
+  )
+)
+
+const benefitsAnalysisHasCards = computed(
+  () => benefitsAnalysisActiveCards.value.length > 0
+)
+
+const benefitsAnalysisHasBenefits = computed(
+  () => benefitsAnalysisBenefitEntries.value.length > 0
+)
+
+function invalidateBenefitsAnalysis() {
+  benefitsAnalysisState.loaded = false
+  benefitsAnalysisState.error = ''
+  benefitsAnalysisState.warning = ''
+  benefitsAnalysisRedemptions.value = new Map()
+}
+
+async function ensureBenefitsAnalysisData() {
+  if (benefitsAnalysisState.loading || benefitsAnalysisState.loaded) {
+    return
+  }
+  if (!benefitsAnalysisHasBenefits.value) {
+    benefitsAnalysisRedemptions.value = new Map()
+    benefitsAnalysisState.loaded = true
+    benefitsAnalysisState.error = ''
+    benefitsAnalysisState.warning = ''
+    return
+  }
+  const benefitIds = Array.from(
+    new Set(benefitsAnalysisBenefitEntries.value.map(({ benefit }) => benefit.id))
+  )
+  if (!benefitIds.length) {
+    benefitsAnalysisRedemptions.value = new Map()
+    benefitsAnalysisState.loaded = true
+    benefitsAnalysisState.error = ''
+    benefitsAnalysisState.warning = ''
+    return
+  }
+  benefitsAnalysisState.loading = true
+  benefitsAnalysisState.error = ''
+  benefitsAnalysisState.warning = ''
+  try {
+    const tasks = benefitIds.map((benefitId) => fetchBenefitRedemptions(benefitId))
+    const results = await Promise.allSettled(tasks)
+    const map = new Map()
+    let hadError = false
+    results.forEach((result, index) => {
+      const benefitId = benefitIds[index]
+      if (result.status === 'fulfilled') {
+        map.set(benefitId, Array.isArray(result.value) ? result.value : [])
+      } else {
+        hadError = true
+      }
+    })
+    benefitsAnalysisRedemptions.value = map
+    benefitsAnalysisState.loaded = true
+    if (hadError) {
+      benefitsAnalysisState.warning =
+        'Some benefit history could not be loaded. Data may be incomplete.'
+    }
+  } catch (err) {
+    benefitsAnalysisState.error = 'Unable to load benefit history for analysis.'
+    benefitsAnalysisState.loaded = false
+    benefitsAnalysisRedemptions.value = new Map()
+  } finally {
+    benefitsAnalysisState.loading = false
+  }
+}
+
 async function loadFrequencies() {
   try {
     const response = await apiClient.get('/api/frequencies')
@@ -1492,6 +1852,10 @@ async function refreshCards({ preserveScroll = true, data = null } = {}) {
           .get('/api/cards')
           .then((response) => response.data)
   cards.value = normaliseCards(payload)
+  invalidateBenefitsAnalysis()
+  if (isBenefitsAnalysisView.value) {
+    await ensureBenefitsAnalysisData()
+  }
   if (preserveScroll) {
     await restoreScrollPosition(activeView, previousScroll)
   } else {
@@ -3124,6 +3488,178 @@ onMounted(async () => {
                 @view-windows="() => handleViewBenefitWindows({ card: entry.card, benefit: entry.benefit })"
               />
             </div>
+          </div>
+        </section>
+      </template>
+
+      <template v-else-if="isBenefitsAnalysisView">
+        <section class="cards-section analysis-section">
+          <div class="content-constrained">
+            <div class="section-header">
+              <div>
+                <h2 class="section-title">Benefits analysis</h2>
+                <p class="section-description">
+                  Explore annual fee trends and benefit performance across your cards.
+                </p>
+              </div>
+              <div
+                v-if="benefitsAnalysisState.loading"
+                class="analysis-status helper-text subtle-text"
+              >
+                Loading analysis…
+              </div>
+            </div>
+            <p v-if="benefitsAnalysisState.error" class="helper-text error-text">
+              {{ benefitsAnalysisState.error }}
+            </p>
+            <p v-else-if="benefitsAnalysisState.warning" class="helper-text warning-text">
+              {{ benefitsAnalysisState.warning }}
+            </p>
+            <p v-if="!benefitsAnalysisHasCards" class="empty-state">
+              Add cards to view the benefits analysis.
+            </p>
+          </div>
+          <div v-if="benefitsAnalysisHasCards" class="analysis-grid content-constrained">
+            <article class="section-card analysis-card analysis-card--wide">
+              <header class="analysis-card__header">
+                <h3 class="analysis-card__title">Annual fee overview</h3>
+                <p class="analysis-card__subtitle">
+                  Total annual fees and how they are distributed throughout the year.
+                </p>
+              </header>
+              <div class="analysis-card__metrics">
+                <div class="analysis-metric">
+                  <span class="analysis-metric__label">Total annual fees</span>
+                  <span class="analysis-metric__value">
+                    ${{ benefitsAnalysisTotals.annualFees.toFixed(2) }}
+                  </span>
+                </div>
+              </div>
+              <div class="analysis-card__charts analysis-card__charts--split">
+                <SimplePieChart
+                  v-if="benefitsAnalysisFeePieData.length"
+                  :data="benefitsAnalysisFeePieData"
+                  aria-label="Annual fees by card"
+                >
+                  <template #center>
+                    <span class="analysis-pie-total-label">Total</span>
+                    <span class="analysis-pie-total-value">
+                      ${{ benefitsAnalysisTotals.annualFees.toFixed(2) }}
+                    </span>
+                  </template>
+                </SimplePieChart>
+                <div v-else class="analysis-empty">No annual fees recorded yet.</div>
+                <SimpleBarChart
+                  :data="benefitsAnalysisMonthlyFeeBars"
+                  aria-label="Annual fee amounts by month"
+                />
+              </div>
+            </article>
+
+            <article class="section-card analysis-card analysis-card--wide">
+              <header class="analysis-card__header">
+                <h3 class="analysis-card__title">Benefit performance trend</h3>
+                <p class="analysis-card__subtitle">
+                  Month-by-month view of redeemed benefits versus annual fees.
+                </p>
+              </header>
+              <SimpleLineChart
+                :points="benefitsAnalysisLinePoints"
+                :series="benefitsAnalysisLineSeries"
+                :y-max="benefitsAnalysisLineMax > 0 ? benefitsAnalysisLineMax : null"
+                aria-label="Monthly benefits versus annual fees"
+              />
+            </article>
+
+            <article class="section-card analysis-card">
+              <header class="analysis-card__header">
+                <h3 class="analysis-card__title">Portfolio summary</h3>
+                <p class="analysis-card__subtitle">
+                  Snapshot of benefit value across your active cards.
+                </p>
+              </header>
+              <ul class="analysis-summary">
+                <li>
+                  <span>Potential value</span>
+                  <strong>${{ benefitsAnalysisTotals.potential.toFixed(2) }}</strong>
+                </li>
+                <li>
+                  <span>Utilized value</span>
+                  <strong>${{ benefitsAnalysisTotals.utilized.toFixed(2) }}</strong>
+                </li>
+                <li>
+                  <span>Net position</span>
+                  <strong
+                    :class="
+                      benefitsAnalysisTotals.net >= 0
+                        ? 'analysis-positive'
+                        : 'analysis-negative'
+                    "
+                  >
+                    ${{ benefitsAnalysisTotals.net.toFixed(2) }}
+                  </strong>
+                </li>
+                <li>
+                  <span>Missed value this cycle</span>
+                  <strong>${{ benefitsAnalysisMissedValue.toFixed(2) }}</strong>
+                </li>
+              </ul>
+            </article>
+
+            <article class="section-card analysis-card">
+              <header class="analysis-card__header">
+                <h3 class="analysis-card__title">Top utilized cards</h3>
+                <p class="analysis-card__subtitle">
+                  Cards delivering the highest redeemed value this cycle.
+                </p>
+              </header>
+              <SimpleBarChart
+                :data="benefitsAnalysisUtilizedByCard"
+                aria-label="Utilized benefits by card"
+              />
+            </article>
+
+            <article class="section-card analysis-card">
+              <header class="analysis-card__header">
+                <h3 class="analysis-card__title">Utilization rate by card</h3>
+                <p class="analysis-card__subtitle">
+                  Redeemed value compared to potential for each card.
+                </p>
+              </header>
+              <SimpleBarChart
+                :data="benefitsAnalysisUtilizationRate"
+                :max-value="100"
+                aria-label="Utilization percentage by card"
+              />
+            </article>
+
+            <article class="section-card analysis-card">
+              <header class="analysis-card__header">
+                <h3 class="analysis-card__title">Benefit mix by type</h3>
+                <p class="analysis-card__subtitle">
+                  Potential value grouped by benefit type.
+                </p>
+              </header>
+              <div class="analysis-card__centered">
+                <SimplePieChart
+                  :data="benefitsAnalysisBenefitsByType"
+                  aria-label="Benefit potential by type"
+                />
+              </div>
+            </article>
+
+            <article class="section-card analysis-card">
+              <header class="analysis-card__header">
+                <h3 class="analysis-card__title">Benefits by frequency</h3>
+                <p class="analysis-card__subtitle">
+                  Count of active benefits by reset cadence.
+                </p>
+              </header>
+              <SimpleBarChart
+                :data="benefitsAnalysisBenefitsByFrequency"
+                aria-label="Benefit count by frequency"
+              />
+            </article>
           </div>
         </section>
       </template>

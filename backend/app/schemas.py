@@ -100,6 +100,7 @@ class BenefitBase(SQLModel):
     window_values: Optional[List[float]] = None
     window_tracking_mode: Optional[YearTrackingMode] = None
     exclude_from_benefits_page: bool = Field(default=False)
+    exclude_from_notifications: bool = Field(default=False)
 
 
 class BenefitCreate(BenefitBase):
@@ -130,6 +131,7 @@ class BenefitUpdate(SQLModel):
     window_values: Optional[List[float]] = None
     window_tracking_mode: Optional[YearTrackingMode] = None
     exclude_from_benefits_page: Optional[bool] = None
+    exclude_from_notifications: Optional[bool] = None
 
     @model_validator(mode="after")
     def validate_window_values(
@@ -490,6 +492,7 @@ class PreconfiguredBenefitBase(SQLModel):
     window_values: Optional[List[float]] = None
     window_tracking_mode: Optional[YearTrackingMode] = None
     exclude_from_benefits_page: bool = Field(default=False)
+    exclude_from_notifications: bool = Field(default=False)
 
 
 class PreconfiguredBenefitCreate(PreconfiguredBenefitBase):

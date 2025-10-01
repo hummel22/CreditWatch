@@ -83,6 +83,10 @@ class Benefit(SQLModel, table=True):
         default=False,
         description="Whether the benefit should be hidden from the aggregated benefits page",
     )
+    exclude_from_notifications: bool = Field(
+        default=False,
+        description="Whether the benefit should be excluded from notification digests",
+    )
 
 
 class BenefitRedemption(SQLModel, table=True):

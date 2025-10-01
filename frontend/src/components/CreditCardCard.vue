@@ -60,7 +60,8 @@ const form = reactive({
   windowTrackingMode: null,
   useCustomValues: false,
   window_values: [],
-  excludeFromBenefitsPage: false
+  excludeFromBenefitsPage: false,
+  excludeFromNotifications: false
 })
 
 const typeDescriptions = {
@@ -338,6 +339,7 @@ function resetForm() {
   form.useCustomValues = false
   form.window_values = []
   form.excludeFromBenefitsPage = false
+  form.excludeFromNotifications = false
   autoExpiration.value = true
   applyFrequencyDefaults()
 }
@@ -376,6 +378,7 @@ function populateForm(benefit) {
     ? benefit.window_values.map((value) => value.toString())
     : []
   form.excludeFromBenefitsPage = Boolean(benefit.exclude_from_benefits_page)
+  form.excludeFromNotifications = Boolean(benefit.exclude_from_notifications)
   if (benefit.frequency === 'yearly' && benefit.expiration_date) {
     const expirationDate = new Date(`${benefit.expiration_date}T00:00:00`)
     const cycleAtExpiration = computeCardCycle(props.card, expirationDate)
@@ -458,6 +461,7 @@ function submitForm() {
     }
   }
   payload.exclude_from_benefits_page = form.excludeFromBenefitsPage
+  payload.exclude_from_notifications = form.excludeFromNotifications
   if (formMode.value === 'edit' && editingBenefitId.value) {
     emit('update-benefit', {
       cardId: props.card.id,
@@ -679,6 +683,10 @@ function handleCardExport() {
         <label class="checkbox-option">
           <input v-model="form.excludeFromBenefitsPage" type="checkbox" />
           <span>Hide from benefits overview</span>
+        </label>
+        <label class="checkbox-option">
+          <input v-model="form.excludeFromNotifications" type="checkbox" />
+          <span>Exclude from notifications</span>
         </label>
         <p class="helper-text">{{ currentTypeDescription }}</p>
         <div class="modal-actions">

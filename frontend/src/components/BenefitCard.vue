@@ -518,7 +518,7 @@ const showUsedValue = computed(() => {
     <footer class="benefit-footer">
       <div class="benefit-footer__values">
         <strong v-if="benefit.type !== 'cumulative'" class="benefit-amount">
-          Remaining ${{ remainingValueLabel }}
+          ${{ remainingValueLabel }}
         </strong>
         <strong v-else class="benefit-amount">
           <template v-if="benefit.expected_value != null">

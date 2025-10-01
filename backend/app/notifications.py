@@ -177,6 +177,7 @@ class NotificationService:
             .join(CreditCard, CreditCard.id == Benefit.credit_card_id)
             .where(Benefit.expiration_date.is_not(None))
             .where(Benefit.type != BenefitType.cumulative)
+            .where(Benefit.exclude_from_notifications.is_(False))
             .where(Benefit.expiration_date >= start)
             .where(Benefit.expiration_date <= end)
             .order_by(Benefit.expiration_date, CreditCard.card_name, Benefit.name)

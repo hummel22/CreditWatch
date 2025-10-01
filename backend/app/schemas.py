@@ -193,6 +193,7 @@ class BenefitRead(BenefitBase):
     missed_window_value: float = Field(default=0, ge=0)
     active_window_indexes: List[int] = Field(default_factory=list)
     window_exclusions: List[BenefitWindowExclusionRead] = Field(default_factory=list)
+    current_window_deleted: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 

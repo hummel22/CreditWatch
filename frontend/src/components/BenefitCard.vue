@@ -277,12 +277,7 @@ const windowUsage = computed(() => {
   if (isCurrentWindowDeleted.value) {
     return { remaining: 0, used: 0 }
   }
-  if (props.benefit.type === 'standard' && standardUsage.value) {
-    return {
-      remaining: Math.max(Number(standardUsage.value.remaining ?? 0), 0),
-      used: Math.max(Number(standardUsage.value.used ?? 0), 0)
-    }
-  }
+
   const baseTarget =
     currentWindowValue.value ??
     Number(
@@ -291,16 +286,17 @@ const windowUsage = computed(() => {
         : props.benefit.value ?? 0
     )
   const target = Number.isFinite(baseTarget) ? Math.max(Number(baseTarget), 0) : null
-  const rawUsed =
-    props.benefit.type === 'incremental'
-      ? Number(
-          props.benefit.current_window_total ?? props.benefit.cycle_redemption_total ?? 0
-        )
-      : Number(props.benefit.current_window_total ?? 0)
-  const used = Number.isFinite(rawUsed) ? Math.max(rawUsed, 0) : 0
+
+  const rawWindowUsed = props.benefit.current_window_total
+  const fallbackUsed = props.benefit.is_used && target !== null ? target : 0
+  const normalizedUsed =
+    rawWindowUsed != null ? Number(rawWindowUsed) : Number(fallbackUsed)
+  const used = Number.isFinite(normalizedUsed) ? Math.max(normalizedUsed, 0) : Math.max(fallbackUsed, 0)
+
   if (target === null) {
     return { remaining: 0, used }
   }
+
   const remaining = Math.max(target - used, 0)
   return { remaining, used }
 })

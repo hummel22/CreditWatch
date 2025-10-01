@@ -16,6 +16,7 @@ from .models import (
     BenefitWindowExclusion,
     Bug,
     CreditCard,
+    InterfaceSettings,
     NotificationLog,
     NotificationSettings,
     YearTrackingMode,
@@ -31,6 +32,7 @@ from .schemas import (
     BugUpdate,
     CreditCardCreate,
     CreditCardUpdate,
+    InterfaceSettingsUpdate,
     BackupSettingsUpdate,
     BackupSettingsWrite,
     NotificationSettingsUpdate,
@@ -315,6 +317,29 @@ def update_bug(session: Session, bug: Bug, payload: BugUpdate) -> Bug:
 def delete_bug(session: Session, bug: Bug) -> None:
     session.delete(bug)
     session.commit()
+
+
+def get_interface_settings(session: Session) -> InterfaceSettings:
+    settings = session.get(InterfaceSettings, 1)
+    if settings is None:
+        settings = InterfaceSettings(id=1)
+        session.add(settings)
+        session.commit()
+        session.refresh(settings)
+    return settings
+
+
+def update_interface_settings(
+    session: Session, payload: InterfaceSettingsUpdate
+) -> InterfaceSettings:
+    settings = get_interface_settings(session)
+    update_data = payload.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(settings, key, value)
+    session.add(settings)
+    session.commit()
+    session.refresh(settings)
+    return settings
 
 
 def delete_benefit_window_exclusion(

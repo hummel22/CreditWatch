@@ -162,6 +162,20 @@ class NotificationService:
             await self._task
         self._task = None
 
+    def _is_event_type_enabled(
+        self, settings: NotificationSettings | None, event_type: str
+    ) -> bool:
+        """Return whether a notification type is permitted to send."""
+
+        if settings is None:
+            return False
+        preferences = getattr(settings, "event_type_preferences", None) or {}
+        if not isinstance(preferences, dict):
+            return True
+        if event_type not in preferences:
+            return True
+        return bool(preferences[event_type])
+
     async def send_custom_message(
         self, message: str, *, title: Optional[str] = None, target_override: Optional[str] = None
     ) -> NotificationDispatchResult:
@@ -169,20 +183,33 @@ class NotificationService:
 
         with Session(self._engine) as session:
             settings = crud.get_notification_settings(session)
-        result = await self._send_payload(
-            settings,
-            title or "CreditWatch notification",
-            message,
-            {},
-            target_override=target_override,
-        )
+        title_value = title or "CreditWatch notification"
+        base_reason = "Manual custom notification triggered."
+        target_value = target_override or (settings.default_target if settings else None)
+        if settings and not self._is_event_type_enabled(settings, "custom"):
+            result = NotificationDispatchResult(
+                sent=False,
+                message="Custom notifications are disabled in settings.",
+                categories={},
+                target=target_value,
+            )
+        else:
+            result = await self._send_payload(
+                settings,
+                title_value,
+                message,
+                {},
+                target_override=target_override,
+            )
+        reason = base_reason if result.sent else (result.message or base_reason)
         await asyncio.to_thread(
             self._record_history,
             "custom",
-            title or "CreditWatch notification",
+            title_value,
             message,
             result.target,
             result,
+            reason,
         )
         return result
 
@@ -197,13 +224,26 @@ class NotificationService:
             settings = crud.get_notification_settings(session)
         title = f"CreditWatch reminders for {target.strftime('%B %d, %Y')}"
         body: Optional[str] = None
-        if not categories:
+        base_reason = (
+            "Automated daily summary triggered."
+            if target_date is None
+            else "Manual daily notification test triggered."
+        )
+        target_value = target_override or (settings.default_target if settings else None)
+        if target_date is None and settings and not self._is_event_type_enabled(settings, "daily"):
+            result_categories = categories or {}
+            result = NotificationDispatchResult(
+                sent=False,
+                message="Daily notifications are disabled in settings.",
+                categories=result_categories,
+                target=target_value,
+            )
+        elif not categories:
             result = NotificationDispatchResult(
                 sent=False,
                 message="No expiring benefits to report.",
                 categories={},
-                target=target_override
-                or (settings.default_target if settings else None),
+                target=target_value,
             )
         else:
             body = self._render_daily_body(target, categories)
@@ -216,6 +256,7 @@ class NotificationService:
             )
         if target_date is None:
             self._last_run_date = target
+        reason = base_reason if result.sent else (result.message or base_reason)
         await asyncio.to_thread(
             self._record_history,
             "daily" if target_date is None else "daily_test",
@@ -223,6 +264,7 @@ class NotificationService:
             body,
             result.target,
             result,
+            reason,
         )
         return result
 
@@ -484,6 +526,7 @@ class NotificationService:
         body: Optional[str],
         target: Optional[str],
         result: NotificationDispatchResult,
+        reason: Optional[str],
     ) -> None:
         try:
             payload = result.model_dump()
@@ -498,6 +541,7 @@ class NotificationService:
                     sent=bool(result.sent),
                     response_message=result.message,
                     categories=categories,
+                    reason=reason,
                 )
         except Exception:  # pragma: no cover - defensive logging
             logger.exception("Failed to record notification history")

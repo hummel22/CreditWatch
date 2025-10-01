@@ -892,6 +892,52 @@ textarea {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
+.notification-history-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.notification-history-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.notification-history-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.notification-history-search input[type='search'] {
+  flex: 1 1 220px;
+  min-width: 200px;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  border-radius: 999px;
+  font-size: 0.9rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.notification-history-search input[type='search']:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.notification-history-search input[type='search']:disabled {
+  background: rgba(226, 232, 240, 0.4);
+  cursor: not-allowed;
+}
+
+.notification-history-toolbar .link-button {
+  white-space: nowrap;
+}
+
 .notification-history-table {
   width: 100%;
   border-collapse: collapse;
@@ -913,6 +959,12 @@ textarea {
   letter-spacing: 0.08em;
   color: #64748b;
   background: rgba(248, 250, 252, 0.8);
+}
+
+.notification-history-table td:nth-child(6),
+.notification-history-table td:nth-child(7) {
+  max-width: 14rem;
+  word-break: break-word;
 }
 
 .notification-history-table tbody tr:last-child td {
@@ -937,6 +989,43 @@ textarea {
 .status-pill.error {
   background: rgba(248, 113, 113, 0.18);
   color: #b91c1c;
+}
+
+.notification-type-settings {
+  margin-top: 1rem;
+}
+
+.notification-type-settings .field-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 0.35rem;
+}
+
+.notification-type-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.notification-type-option {
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.notification-type-option input[type='checkbox'] {
+  margin-top: 0.25rem;
+}
+
+.notification-type-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.notification-type-label {
+  font-weight: 600;
+  color: #0f172a;
 }
 
 .primary-button {

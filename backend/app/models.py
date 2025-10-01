@@ -133,6 +133,14 @@ class NotificationSettings(SQLModel, table=True):
         description="Optional default target slug understood by the Home Assistant automation",
     )
     enabled: bool = Field(default=True, description="Whether notifications are currently enabled")
+    event_type_preferences: Dict[str, bool] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, nullable=False, default=dict),
+        description=(
+            "Per-notification-type enablement overrides stored as a JSON mapping "
+            "of event type to boolean."
+        ),
+    )
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -171,6 +179,10 @@ class NotificationLog(SQLModel, table=True):
     sent: bool = Field(default=False, description="Whether the webhook call was successful")
     response_message: Optional[str] = Field(
         default=None, description="Human readable outcome message from the dispatcher"
+    )
+    reason: Optional[str] = Field(
+        default=None,
+        description="Explanation of why the notification ran or was skipped",
     )
     categories: Dict[str, object] = Field(
         default_factory=dict,

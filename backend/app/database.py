@@ -74,6 +74,7 @@ def _run_database_initialisation_steps() -> None:
     ensure_benefit_window_values_column()
     ensure_benefit_window_tracking_column()
     ensure_benefit_visibility_column()
+    ensure_benefit_notification_column()
     ensure_card_year_tracking_column()
     ensure_card_cancelled_column()
 
@@ -224,6 +225,19 @@ def ensure_benefit_visibility_column() -> None:
         if "exclude_from_benefits_page" not in existing_columns:
             connection.exec_driver_sql(
                 "ALTER TABLE benefit ADD COLUMN exclude_from_benefits_page BOOLEAN NOT NULL DEFAULT 0"
+            )
+
+
+def ensure_benefit_notification_column() -> None:
+    """Ensure benefits can be excluded from notification reminders."""
+
+    with engine.connect() as connection:
+        existing_columns = {
+            row[1] for row in connection.exec_driver_sql("PRAGMA table_info(benefit)")
+        }
+        if "exclude_from_notifications" not in existing_columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE benefit ADD COLUMN exclude_from_notifications BOOLEAN NOT NULL DEFAULT 0"
             )
 
 

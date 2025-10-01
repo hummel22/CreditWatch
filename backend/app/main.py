@@ -565,6 +565,7 @@ def export_card_template(
             "frequency": benefit.frequency,
             "type": benefit.type,
             "exclude_from_benefits_page": benefit.exclude_from_benefits_page,
+            "exclude_from_notifications": benefit.exclude_from_notifications,
         }
         if benefit.type == BenefitType.cumulative:
             if benefit.expected_value is not None:
@@ -1481,6 +1482,7 @@ def build_benefit_read(
         is_used=benefit.is_used,
         used_at=benefit.used_at,
         exclude_from_benefits_page=benefit.exclude_from_benefits_page,
+        exclude_from_notifications=benefit.exclude_from_notifications,
         redemption_total=total,
         redemption_count=count,
         remaining_value=remaining,

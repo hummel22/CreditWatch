@@ -886,7 +886,8 @@ function normaliseCard(card) {
   if (Array.isArray(card.benefits)) {
     normalized.benefits = card.benefits.map((benefit) => ({
       ...benefit,
-      exclude_from_benefits_page: Boolean(benefit.exclude_from_benefits_page)
+      exclude_from_benefits_page: Boolean(benefit.exclude_from_benefits_page),
+      exclude_from_notifications: Boolean(benefit.exclude_from_notifications)
     }))
   }
   return normalized
@@ -919,6 +920,7 @@ function createAdminBenefit(overrides = {}) {
     window_values: [],
     window_tracking_mode: '',
     exclude_from_benefits_page: false,
+    exclude_from_notifications: false,
     ...overrides
   }
 }
@@ -1397,7 +1399,8 @@ function openAdminEditModal(card) {
         ? benefit.window_values.map((value) => value.toString())
         : [],
       window_tracking_mode: benefit.window_tracking_mode || '',
-      exclude_from_benefits_page: Boolean(benefit.exclude_from_benefits_page)
+      exclude_from_benefits_page: Boolean(benefit.exclude_from_benefits_page),
+      exclude_from_notifications: Boolean(benefit.exclude_from_notifications)
     })
   )
   if (!adminModal.form.benefits.length) {
@@ -1496,6 +1499,9 @@ async function submitAdminCard() {
         base.exclude_from_benefits_page = Boolean(
           benefit.exclude_from_benefits_page
         )
+        base.exclude_from_notifications = Boolean(
+          benefit.exclude_from_notifications
+        )
         return base
       })
     }
@@ -1565,6 +1571,9 @@ async function handleCreateCard() {
         }
         if (benefit.exclude_from_benefits_page) {
           benefitPayload.exclude_from_benefits_page = true
+        }
+        if (benefit.exclude_from_notifications) {
+          benefitPayload.exclude_from_notifications = true
         }
         if (benefit.type === 'cumulative') {
           if (benefit.expected_value != null) {
@@ -3703,6 +3712,10 @@ onMounted(async () => {
           <label class="checkbox-option admin-benefit-exclude">
             <input v-model="benefit.exclude_from_benefits_page" type="checkbox" />
             <span>Hide from benefits overview</span>
+          </label>
+          <label class="checkbox-option admin-benefit-exclude">
+            <input v-model="benefit.exclude_from_notifications" type="checkbox" />
+            <span>Exclude from notifications</span>
           </label>
           <p class="helper-text">{{ benefitTypeDescriptions[benefit.type] }}</p>
           <div class="admin-benefit-card__footer">

@@ -6,7 +6,7 @@ import os
 import shutil
 import sqlite3
 import tempfile
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -815,6 +815,18 @@ def build_card_response(session: Session, card: CreditCard) -> CreditCardWithBen
             active_window_indexes,
             total_window_count,
         )
+        raw_cycle_start = context.get("cycle_start")
+        cycle_start = raw_cycle_start if isinstance(raw_cycle_start, date) else None
+        raw_window_start = context.get("window_start")
+        window_start = raw_window_start if isinstance(raw_window_start, date) else None
+        effective_is_used = _derive_effective_usage(
+            benefit,
+            cycle_total_tuple,
+            window_total_tuple,
+            cycle_target_value,
+            cycle_start=cycle_start,
+            window_start=window_start,
+        )
         benefits.append(
             build_benefit_read(
                 benefit,
@@ -831,6 +843,7 @@ def build_card_response(session: Session, card: CreditCard) -> CreditCardWithBen
                 active_window_indexes,
                 window_exclusions,
                 current_window_deleted,
+                is_used_override=effective_is_used,
             )
         )
 
@@ -1357,6 +1370,54 @@ def _calculate_cycle_target_value(
     return total
 
 
+def _derive_effective_usage(
+    benefit: Benefit,
+    cycle_totals: Tuple[float, int] | None,
+    window_totals: Tuple[float, int] | None,
+    cycle_target_value: Optional[float],
+    *,
+    cycle_start: Optional[date],
+    window_start: Optional[date],
+) -> bool:
+    """Resolve the effective usage state for a benefit in the active window."""
+
+    effective = bool(benefit.is_used)
+    cycle_amount, _cycle_count = (
+        (float(cycle_totals[0]), int(cycle_totals[1]))
+        if cycle_totals is not None
+        else (0.0, 0)
+    )
+    window_amount, window_count = (
+        (float(window_totals[0]), int(window_totals[1]))
+        if window_totals is not None
+        else (0.0, 0)
+    )
+
+    used_at_date = None
+    if isinstance(benefit.used_at, datetime):
+        used_at_date = benefit.used_at.date()
+
+    if benefit.type == BenefitType.standard:
+        if window_count > 0 or window_amount > 0:
+            return True
+        period_start = window_start or cycle_start
+        if period_start:
+            if used_at_date is None or used_at_date < period_start:
+                return False
+        return effective
+
+    if benefit.type == BenefitType.incremental:
+        target_value = float(cycle_target_value or 0)
+        if target_value > 0 and cycle_amount >= target_value - 1e-6:
+            return True
+        if cycle_start:
+            if used_at_date is None or used_at_date < cycle_start:
+                return False
+        return effective
+
+    return effective
+
+
 def build_enriched_benefit(
     session: Session, benefit: Benefit, card: CreditCard | None = None
 ) -> BenefitRead:
@@ -1404,6 +1465,18 @@ def build_enriched_benefit(
         active_window_indexes,
         total_window_count,
     )
+    raw_cycle_start = context.get("cycle_start")
+    cycle_start = raw_cycle_start if isinstance(raw_cycle_start, date) else None
+    raw_window_start = context.get("window_start")
+    window_start = raw_window_start if isinstance(raw_window_start, date) else None
+    effective_is_used = _derive_effective_usage(
+        benefit,
+        cycle_total_tuple,
+        window_total_tuple,
+        cycle_target_value,
+        cycle_start=cycle_start,
+        window_start=window_start,
+    )
     return build_benefit_read(
         benefit,
         summary,
@@ -1419,6 +1492,7 @@ def build_enriched_benefit(
         active_window_indexes,
         window_exclusions,
         current_window_deleted,
+        is_used_override=effective_is_used,
     )
 
 
@@ -1437,6 +1511,8 @@ def build_benefit_read(
     active_window_indexes: Sequence[int] | None,
     window_exclusions: Sequence[BenefitWindowExclusion] | Sequence[BenefitWindowExclusionRead],
     current_window_deleted: bool,
+    *,
+    is_used_override: Optional[bool] = None,
 ) -> BenefitRead:
     total, count = redemption_summary or (0.0, 0)
     cycle_value = float(cycle_total)
@@ -1467,6 +1543,11 @@ def build_benefit_read(
                     exclusion, from_attributes=True
                 )
             )
+    resolved_is_used = (
+        bool(is_used_override)
+        if is_used_override is not None
+        else bool(benefit.is_used)
+    )
     benefit_read = BenefitRead(
         id=benefit.id,
         credit_card_id=benefit.credit_card_id,
@@ -1479,7 +1560,7 @@ def build_benefit_read(
         window_values=list(benefit.window_values or []),
         window_tracking_mode=benefit.window_tracking_mode,
         expiration_date=expiration_date,
-        is_used=benefit.is_used,
+        is_used=resolved_is_used,
         used_at=benefit.used_at,
         exclude_from_benefits_page=benefit.exclude_from_benefits_page,
         exclude_from_notifications=benefit.exclude_from_notifications,

@@ -4,6 +4,17 @@ import VueApexCharts from 'vue3-apexcharts'
 
 const ApexChart = VueApexCharts
 
+const FALLBACK_COLORS = [
+  '#4f46e5',
+  '#6366f1',
+  '#22c55e',
+  '#0ea5e9',
+  '#f97316',
+  '#ec4899',
+  '#a855f7',
+  '#14b8a6'
+]
+
 const props = defineProps({
   series: {
     type: Array,
@@ -44,10 +55,14 @@ const normalizedSeries = computed(() =>
           : typeof point?.label === 'string' && point.label.trim()
             ? point.label.trim()
             : `Segment ${index + 1}`
+      const color =
+        typeof point?.color === 'string' && point.color.trim()
+          ? point.color.trim()
+          : FALLBACK_COLORS[index % FALLBACK_COLORS.length]
       return {
         name: label,
         value: safeValue,
-        color: point?.color,
+        color,
         drilldownId: point?.drilldown,
         displayValue:
           point?.displayValue ||
@@ -115,15 +130,15 @@ const apexPieSeries = computed(() => normalizedSeries.value.map((entry) => entry
 
 const pieOptions = computed(() => {
   const entries = normalizedSeries.value
-  const colors = entries
-    .map((entry) => (typeof entry.color === 'string' ? entry.color : null))
-    .filter((color) => color)
   const legendOptions = props.showLegend
     ? {
         show: true,
         position: 'bottom',
         labels: {
           colors: 'var(--color-text-secondary, #475569)'
+        },
+        markers: {
+          fillColors: entries.map((entry) => entry.color)
         }
       }
     : { show: false }
@@ -136,23 +151,10 @@ const pieOptions = computed(() => {
       animations: { enabled: false }
     },
     labels: entries.map((entry) => entry.name),
-    ...(colors.length === entries.length ? { colors } : {}),
+    colors: entries.map((entry) => entry.color),
     legend: legendOptions,
     dataLabels: {
-      formatter(val, opts) {
-        const entry = entries[opts.seriesIndex]
-        if (!entry) {
-          return `${val.toFixed(1)}%`
-        }
-        return `${entry.name}: ${entry.displayValue}`
-      },
-      style: {
-        colors: ['var(--color-text-heading, #0f172a)'],
-        fontSize: '12px'
-      },
-      dropShadow: {
-        enabled: false
-      }
+      enabled: false
     },
     tooltip: {
       y: {

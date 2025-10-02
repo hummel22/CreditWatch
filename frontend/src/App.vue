@@ -3629,7 +3629,6 @@ onMounted(async () => {
                 <DrilldownPieChart
                   :series="benefitsAnalysisFeePieChart.series"
                   :drilldown-series="benefitsAnalysisFeePieChart.drilldown"
-                  :show-legend="false"
                   aria-label="Annual fees by card"
                 />
               </div>
@@ -3710,22 +3709,6 @@ onMounted(async () => {
 
             <article
               class="section-card analysis-card"
-              :style="analysisCardUnits(1, 2)"
-            >
-              <header class="analysis-card__header">
-                <h3 class="analysis-card__title">Top utilized cards</h3>
-                <p class="analysis-card__subtitle">
-                  Cards delivering the highest redeemed value this cycle.
-                </p>
-              </header>
-              <SimpleBarChart
-                :data="benefitsAnalysisUtilizedByCard"
-                aria-label="Utilized benefits by card"
-              />
-            </article>
-
-            <article
-              class="section-card analysis-card"
               :style="analysisCardUnits(1, 3)"
             >
               <header class="analysis-card__header">
@@ -3779,6 +3762,22 @@ onMounted(async () => {
                   aria-label="Benefit potential by type"
                 />
               </div>
+            </article>
+
+            <article
+              class="section-card analysis-card"
+              :style="analysisCardUnits(1, 2)"
+            >
+              <header class="analysis-card__header">
+                <h3 class="analysis-card__title">Top utilized cards</h3>
+                <p class="analysis-card__subtitle">
+                  Cards delivering the highest redeemed value this cycle.
+                </p>
+              </header>
+              <SimpleBarChart
+                :data="benefitsAnalysisUtilizedByCard"
+                aria-label="Utilized benefits by card"
+              />
             </article>
 
           </div>

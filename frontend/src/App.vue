@@ -1519,6 +1519,17 @@ function formatCurrency(value, options = {}) {
   }).format(safeValue)
 }
 
+function getCardLabel(cardName) {
+  if (typeof cardName !== 'string') {
+    return 'Card'
+  }
+  const words = cardName.trim().split(/\s+/).filter(Boolean)
+  if (!words.length) {
+    return 'Card'
+  }
+  return words.slice(0, 2).join(' ')
+}
+
 const benefitsAnalysisState = reactive({
   loading: false,
   loaded: false,
@@ -1567,6 +1578,7 @@ const benefitsAnalysisFeePieChart = computed(() => {
     const color = getAnalysisColor(index)
     const baseDrilldownId = card.id != null ? `card-${card.id}` : `card-${index}`
     const benefits = Array.isArray(card.benefits) ? card.benefits : []
+    const cardLabel = getCardLabel(card.card_name)
 
     const drilldownData = benefits
       .map((benefit) => {
@@ -1605,7 +1617,7 @@ const benefitsAnalysisFeePieChart = computed(() => {
     }
 
     series.push({
-      name: card.card_name,
+      name: cardLabel,
       y: safeFee,
       color,
       drilldown: limitedDrilldownData.length ? baseDrilldownId : undefined,
@@ -3602,7 +3614,7 @@ onMounted(async () => {
 
             <article
               class="section-card analysis-card analysis-card--visual"
-              :style="analysisCardUnits(1, 2)"
+              :style="analysisCardUnits(3, 4)"
             >
               <header class="analysis-card__header">
                 <h3 class="analysis-card__title">Annual fees by card</h3>
@@ -3617,6 +3629,7 @@ onMounted(async () => {
                 <DrilldownPieChart
                   :series="benefitsAnalysisFeePieChart.series"
                   :drilldown-series="benefitsAnalysisFeePieChart.drilldown"
+                  :show-legend="false"
                   aria-label="Annual fees by card"
                 />
               </div>

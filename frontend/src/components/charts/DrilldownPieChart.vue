@@ -16,6 +16,10 @@ const props = defineProps({
   ariaLabel: {
     type: String,
     default: 'Pie chart with drilldown'
+  },
+  showLegend: {
+    type: Boolean,
+    default: true
   }
 })
 
@@ -114,6 +118,15 @@ const pieOptions = computed(() => {
   const colors = entries
     .map((entry) => (typeof entry.color === 'string' ? entry.color : null))
     .filter((color) => color)
+  const legendOptions = props.showLegend
+    ? {
+        show: true,
+        position: 'bottom',
+        labels: {
+          colors: 'var(--color-text-secondary, #475569)'
+        }
+      }
+    : { show: false }
   return {
     chart: {
       type: 'pie',
@@ -124,12 +137,7 @@ const pieOptions = computed(() => {
     },
     labels: entries.map((entry) => entry.name),
     ...(colors.length === entries.length ? { colors } : {}),
-    legend: {
-      position: 'bottom',
-      labels: {
-        colors: 'var(--color-text-secondary, #475569)'
-      }
-    },
+    legend: legendOptions,
     dataLabels: {
       formatter(val, opts) {
         const entry = entries[opts.seriesIndex]

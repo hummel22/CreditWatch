@@ -1,12 +1,8 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import Highcharts from 'highcharts'
-import accessibilityModule from 'highcharts/modules/accessibility'
+import { computed } from 'vue'
+import VueApexCharts from 'vue3-apexcharts'
 
-if (!Highcharts.__creditwatchAccessibilityInitialized) {
-  accessibilityModule(Highcharts)
-  Highcharts.__creditwatchAccessibilityInitialized = true
-}
+const ApexChart = VueApexCharts
 
 const FALLBACK_COLORS = [
   '#22c55e',
@@ -89,131 +85,89 @@ const formatter = new Intl.NumberFormat(undefined, {
   maximumFractionDigits: 2
 })
 
-const chartOptions = computed(() => {
-  const categories = normalizedPoints.value.map((point) => point.label)
-
-  const chartSeries = normalizedSeries.value.map((series) => ({
-    type: 'line',
+const apexSeries = computed(() =>
+  normalizedSeries.value.map((series) => ({
     name: series.label,
-    color: series.color,
     data: normalizedPoints.value.map((point) => {
       const raw = Number(point.values?.[series.key] ?? 0)
-      const value = Number.isFinite(raw) ? raw : 0
-      return value
-    }),
-    tooltip: {
-      valueSuffix: ''
-    }
+      return Number.isFinite(raw) ? raw : 0
+    })
   }))
-
-  return {
-    chart: {
-      type: 'line',
-      backgroundColor: 'transparent',
-      height: 320
-    },
-    title: { text: undefined },
-    subtitle: { text: undefined },
-    credits: { enabled: false },
-    legend: {
-      itemStyle: {
-        color: 'var(--color-text-secondary, #475569)'
-      }
-    },
-    xAxis: {
-      categories,
-      title: { text: undefined },
-      labels: {
-        style: {
-          color: 'var(--color-text-secondary, #64748b)'
-        }
-      }
-    },
-    yAxis: {
-      min: 0,
-      max: yAxisMax.value ?? undefined,
-      title: { text: undefined },
-      labels: {
-        formatter() {
-          return formatter.format(this.value)
-        },
-        style: {
-          color: 'var(--color-text-secondary, #64748b)'
-        }
-      }
-    },
-    tooltip: {
-      shared: true,
-      formatter() {
-        const header = `<strong>${this.x}</strong>`
-        const points = (this.points || [])
-          .map((point) => {
-            const value = formatter.format(point.y)
-            const colorSwatch = `<span style="background:${point.color};width:0.75rem;height:0.75rem;border-radius:9999px;display:inline-block;margin-right:0.5rem;"></span>`
-            return `<div style="display:flex;align-items:center;gap:0.5rem;">${colorSwatch}<span>${point.series.name}: ${value}</span></div>`
-          })
-          .join('')
-        return `${header}<div style="margin-top:0.5rem;display:flex;flex-direction:column;gap:0.25rem;">${points}</div>`
-      }
-    },
-    plotOptions: {
-      series: {
-        marker: {
-          enabled: true,
-          radius: 3
-        }
-      }
-    },
-    accessibility: {
-      description: props.ariaLabel,
-      keyboardNavigation: {
-        enabled: true
-      }
-    },
-    series: chartSeries
-  }
-})
-
-const chartContainer = ref(null)
-let chartInstance = null
-
-function renderChart() {
-  if (!chartContainer.value) {
-    return
-  }
-
-  const options = chartOptions.value
-
-  if (chartInstance) {
-    chartInstance.update(options, true, true)
-  } else {
-    chartInstance = Highcharts.chart(chartContainer.value, options)
-  }
-}
-
-onMounted(() => {
-  renderChart()
-})
-
-watch(
-  chartOptions,
-  () => {
-    renderChart()
-  },
-  { deep: true }
 )
 
-onBeforeUnmount(() => {
-  if (chartInstance) {
-    chartInstance.destroy()
-    chartInstance = null
+const chartOptions = computed(() => ({
+  chart: {
+    type: 'line',
+    height: 320,
+    background: 'transparent',
+    toolbar: { show: false },
+    animations: { enabled: false }
+  },
+  stroke: {
+    width: 2,
+    curve: 'straight'
+  },
+  markers: {
+    size: 4
+  },
+  dataLabels: {
+    enabled: false
+  },
+  colors: normalizedSeries.value.map((series) => series.color),
+  legend: {
+    labels: {
+      colors: 'var(--color-text-secondary, #475569)'
+    }
+  },
+  xaxis: {
+    categories: normalizedPoints.value.map((point) => point.label),
+    labels: {
+      style: {
+        colors: 'var(--color-text-secondary, #64748b)'
+      }
+    },
+    axisBorder: {
+      color: 'var(--color-border-subtle, #e2e8f0)'
+    },
+    axisTicks: {
+      color: 'var(--color-border-subtle, #e2e8f0)'
+    }
+  },
+  yaxis: {
+    min: 0,
+    max: yAxisMax.value ?? undefined,
+    labels: {
+      formatter(value) {
+        return formatter.format(value)
+      },
+      style: {
+        colors: 'var(--color-text-secondary, #64748b)'
+      }
+    }
+  },
+  grid: {
+    borderColor: 'var(--color-border-subtle, #e2e8f0)'
+  },
+  tooltip: {
+    shared: true,
+    y: {
+      formatter(value) {
+        return formatter.format(value)
+      }
+    }
   }
-})
+}))
 </script>
 
 <template>
   <figure class="simple-line-chart" role="img" :aria-label="ariaLabel">
-    <div ref="chartContainer" class="simple-line-chart__chart" />
+    <ApexChart
+      type="line"
+      height="320"
+      class="simple-line-chart__chart"
+      :options="chartOptions"
+      :series="apexSeries"
+    />
     <table class="sr-only">
       <caption>{{ ariaLabel }}</caption>
       <thead>

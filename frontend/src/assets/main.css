@@ -1760,6 +1760,15 @@ textarea:focus {
   .section-card {
     padding: 1.25rem;
   }
+
+  .analysis-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .analysis-card {
+    grid-column: span 1;
+    min-width: 0;
+  }
 }
 
 .analysis-section {
@@ -1773,27 +1782,23 @@ textarea:focus {
 }
 
 .analysis-grid {
+  --analysis-grid-columns: 6;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(var(--analysis-grid-columns), minmax(0, 1fr));
   gap: 1.5rem;
   margin-top: 1.75rem;
+  grid-auto-flow: dense;
 }
 
 .analysis-card {
+  --analysis-card-min-units: 2;
+  --analysis-card-max-units: 2;
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
   height: 100%;
-}
-
-.analysis-card--wide {
-  grid-column: 1 / -1;
-}
-
-@media (min-width: 960px) {
-  .analysis-card--wide {
-    grid-column: span 2;
-  }
+  grid-column: span var(--analysis-card-max-units);
+  min-width: calc((100% / var(--analysis-grid-columns)) * var(--analysis-card-min-units));
 }
 
 .analysis-card--visual {

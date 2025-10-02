@@ -93,6 +93,28 @@ const frequencyLabel = computed(() => {
 
 const currentWindowLabel = computed(() => props.benefit.current_window_label || '')
 
+const isWindowCompleted = computed(() => {
+  if (isCurrentWindowDeleted.value) {
+    return false
+  }
+
+  if (props.benefit.type === 'incremental') {
+    const rawTarget =
+      props.benefit.current_window_value ??
+      props.benefit.cycle_target_value ??
+      props.benefit.value ??
+      0
+    const target = Number(rawTarget)
+    if (!Number.isFinite(target) || target <= 0) {
+      return false
+    }
+    const used = Number(props.benefit.current_window_total ?? 0)
+    return used >= target
+  }
+
+  return Boolean(props.benefit.is_used)
+})
+
 function resolveCalendarExpiration(benefit, cardContext) {
   const frequency = benefit?.frequency
   const trackingMode =
@@ -339,7 +361,7 @@ const showUsedValue = computed(() => {
 <template>
   <article
     class="benefit-card"
-    :class="{ used: benefit.is_used, 'window-deleted': isCurrentWindowDeleted }"
+    :class="{ used: isWindowCompleted, 'window-deleted': isCurrentWindowDeleted }"
   >
     <header class="benefit-header">
       <div class="benefit-header__body">

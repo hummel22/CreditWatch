@@ -1808,29 +1808,6 @@ const benefitsAnalysisBenefitsByType = computed(() => {
   }))
 })
 
-const benefitsAnalysisBenefitsByFrequency = computed(() => {
-  const counts = new Map()
-  for (const { benefit } of benefitsAnalysisBenefitEntries.value) {
-    const frequency = typeof benefit?.frequency === 'string' && benefit.frequency.trim()
-      ? benefit.frequency.trim()
-      : 'unspecified'
-    counts.set(frequency, (counts.get(frequency) ?? 0) + 1)
-  }
-  const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1])
-  return sorted.map(([frequency, count], index) => {
-    const label =
-      frequency === 'unspecified'
-        ? 'Unspecified'
-        : frequency.charAt(0).toUpperCase() + frequency.slice(1)
-    return {
-      label,
-      value: count,
-      color: getAnalysisColor(index),
-      displayValue: count.toLocaleString()
-    }
-  })
-})
-
 const benefitsAnalysisMissedValue = computed(() =>
   benefitsAnalysisBenefitEntries.value.reduce(
     (acc, { benefit }) => acc + Number(benefit?.missed_window_value ?? 0),
@@ -1845,6 +1822,17 @@ const benefitsAnalysisHasCards = computed(
 const benefitsAnalysisHasBenefits = computed(
   () => benefitsAnalysisBenefitEntries.value.length > 0
 )
+
+function analysisCardUnits(minUnits, maxUnits) {
+  const safeMin = Number.isFinite(Number(minUnits)) ? Number(minUnits) : 1
+  const safeMax = Number.isFinite(Number(maxUnits)) ? Number(maxUnits) : safeMin
+  const clampedMin = Math.max(1, Math.min(safeMin, 6))
+  const clampedMax = Math.max(clampedMin, Math.min(safeMax, 6))
+  return {
+    '--analysis-card-min-units': clampedMin,
+    '--analysis-card-max-units': clampedMax
+  }
+}
 
 function invalidateBenefitsAnalysis() {
   benefitsAnalysisState.loaded = false
@@ -3597,7 +3585,10 @@ onMounted(async () => {
             </p>
           </div>
           <div v-if="benefitsAnalysisHasCards" class="analysis-grid content-constrained">
-            <article class="section-card analysis-card">
+            <article
+              class="section-card analysis-card"
+              :style="analysisCardUnits(1, 2)"
+            >
               <header class="analysis-card__header">
                 <h3 class="analysis-card__title">Annual fee total</h3>
                 <p class="analysis-card__subtitle">
@@ -3609,7 +3600,10 @@ onMounted(async () => {
               </div>
             </article>
 
-            <article class="section-card analysis-card analysis-card--visual">
+            <article
+              class="section-card analysis-card analysis-card--visual"
+              :style="analysisCardUnits(1, 2)"
+            >
               <header class="analysis-card__header">
                 <h3 class="analysis-card__title">Annual fees by card</h3>
                 <p class="analysis-card__subtitle">
@@ -3629,7 +3623,10 @@ onMounted(async () => {
               <p v-else class="analysis-empty">No annual fees recorded yet.</p>
             </article>
 
-            <article class="section-card analysis-card analysis-card--visual analysis-card--wide">
+            <article
+              class="section-card analysis-card analysis-card--visual"
+              :style="analysisCardUnits(2, 6)"
+            >
               <header class="analysis-card__header">
                 <h3 class="analysis-card__title">Annual fee timeline</h3>
                 <p class="analysis-card__subtitle">
@@ -3642,7 +3639,10 @@ onMounted(async () => {
               />
             </article>
 
-            <article class="section-card analysis-card analysis-card--wide">
+            <article
+              class="section-card analysis-card"
+              :style="analysisCardUnits(2, 4)"
+            >
               <header class="analysis-card__header">
                 <h3 class="analysis-card__title">Benefit performance trend</h3>
                 <p class="analysis-card__subtitle">
@@ -3657,7 +3657,10 @@ onMounted(async () => {
               />
             </article>
 
-            <article class="section-card analysis-card">
+            <article
+              class="section-card analysis-card"
+              :style="analysisCardUnits(1, 2)"
+            >
               <header class="analysis-card__header">
                 <h3 class="analysis-card__title">Portfolio summary</h3>
                 <p class="analysis-card__subtitle">
@@ -3692,7 +3695,10 @@ onMounted(async () => {
               </ul>
             </article>
 
-            <article class="section-card analysis-card">
+            <article
+              class="section-card analysis-card"
+              :style="analysisCardUnits(1, 2)"
+            >
               <header class="analysis-card__header">
                 <h3 class="analysis-card__title">Top utilized cards</h3>
                 <p class="analysis-card__subtitle">
@@ -3705,7 +3711,10 @@ onMounted(async () => {
               />
             </article>
 
-            <article class="section-card analysis-card">
+            <article
+              class="section-card analysis-card"
+              :style="analysisCardUnits(1, 4)"
+            >
               <header class="analysis-card__header">
                 <h3 class="analysis-card__title">Utilization rate by card</h3>
                 <p class="analysis-card__subtitle">
@@ -3741,7 +3750,10 @@ onMounted(async () => {
               <p v-else class="analysis-empty">No utilization data available.</p>
             </article>
 
-            <article class="section-card analysis-card">
+            <article
+              class="section-card analysis-card"
+              :style="analysisCardUnits(2, 4)"
+            >
               <header class="analysis-card__header">
                 <h3 class="analysis-card__title">Benefit mix by type</h3>
                 <p class="analysis-card__subtitle">
@@ -3756,18 +3768,6 @@ onMounted(async () => {
               </div>
             </article>
 
-            <article class="section-card analysis-card">
-              <header class="analysis-card__header">
-                <h3 class="analysis-card__title">Benefits by frequency</h3>
-                <p class="analysis-card__subtitle">
-                  Count of active benefits by reset cadence.
-                </p>
-              </header>
-              <SimpleBarChart
-                :data="benefitsAnalysisBenefitsByFrequency"
-                aria-label="Benefit count by frequency"
-              />
-            </article>
           </div>
         </section>
       </template>

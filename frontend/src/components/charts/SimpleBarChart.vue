@@ -24,6 +24,11 @@ const props = defineProps({
   maxValue: {
     type: Number,
     default: null
+  },
+  orientation: {
+    type: String,
+    default: 'vertical',
+    validator: (value) => ['vertical', 'horizontal'].includes(value)
   }
 })
 
@@ -58,23 +63,58 @@ const bars = computed(() => {
   const max = computedMax.value
   return normalizedData.value.map((item) => ({
     ...item,
-    percent: max > 0 ? (item.value / max) * 100 : 0
+    percent: (() => {
+      if (!(max > 0)) {
+        return 0
+      }
+      const percent = (item.value / max) * 100
+      if (!Number.isFinite(percent)) {
+        return 0
+      }
+      return Math.min(Math.max(percent, 0), 100)
+    })()
   }))
 })
 
 const hasAnyValue = computed(() => bars.value.some((bar) => bar.value > 0))
+
+const isHorizontal = computed(() => props.orientation === 'horizontal')
 </script>
 
 <template>
   <figure class="simple-bar-chart" role="img" :aria-label="ariaLabel">
-    <div class="simple-bar-chart__grid" :class="{ 'simple-bar-chart__grid--empty': !hasAnyValue }">
-      <div v-for="bar in bars" :key="bar.label" class="simple-bar-chart__column">
-        <div class="simple-bar-chart__bar" :style="{ height: `${Math.min(Math.max(bar.percent, 0), 100)}%`, backgroundColor: bar.color }">
-          <span class="sr-only">{{ bar.label }}: {{ bar.displayValue }}</span>
+    <div
+      class="simple-bar-chart__grid"
+      :class="{
+        'simple-bar-chart__grid--empty': !hasAnyValue,
+        'simple-bar-chart__grid--horizontal': isHorizontal
+      }"
+    >
+      <template v-if="isHorizontal">
+        <div v-for="bar in bars" :key="bar.label" class="simple-bar-chart__row">
+          <span class="simple-bar-chart__label simple-bar-chart__label--horizontal" :title="bar.label">
+            {{ bar.label }}
+          </span>
+          <div class="simple-bar-chart__bar-track">
+            <div
+              class="simple-bar-chart__bar simple-bar-chart__bar--horizontal"
+              :style="{ width: `${bar.percent}%`, backgroundColor: bar.color }"
+            >
+              <span class="sr-only">{{ bar.label }}: {{ bar.displayValue }}</span>
+            </div>
+          </div>
+          <span class="simple-bar-chart__value simple-bar-chart__value--horizontal">{{ bar.displayValue }}</span>
         </div>
-        <span class="simple-bar-chart__label" :title="bar.label">{{ bar.label }}</span>
-        <span class="simple-bar-chart__value">{{ bar.displayValue }}</span>
-      </div>
+      </template>
+      <template v-else>
+        <div v-for="bar in bars" :key="bar.label" class="simple-bar-chart__column">
+          <div class="simple-bar-chart__bar" :style="{ height: `${bar.percent}%`, backgroundColor: bar.color }">
+            <span class="sr-only">{{ bar.label }}: {{ bar.displayValue }}</span>
+          </div>
+          <span class="simple-bar-chart__label" :title="bar.label">{{ bar.label }}</span>
+          <span class="simple-bar-chart__value">{{ bar.displayValue }}</span>
+        </div>
+      </template>
       <p v-if="!bars.length" class="simple-bar-chart__empty">No data available</p>
     </div>
   </figure>

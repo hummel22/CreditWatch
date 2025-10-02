@@ -1968,11 +1968,34 @@ textarea:focus {
   min-height: 220px;
 }
 
+.simple-bar-chart__grid--horizontal {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: stretch;
+  min-height: auto;
+}
+
 .simple-bar-chart__column {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.45rem;
+}
+
+.simple-bar-chart__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 3fr) auto;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.simple-bar-chart__bar-track {
+  width: 100%;
+  height: 0.75rem;
+  background: rgba(99, 102, 241, 0.12);
+  border-radius: 999px;
+  overflow: hidden;
 }
 
 .simple-bar-chart__bar {
@@ -1982,6 +2005,12 @@ textarea:focus {
   transition: height 0.3s ease;
 }
 
+.simple-bar-chart__bar--horizontal {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
 .simple-bar-chart__label {
   text-align: center;
   font-size: 0.85rem;
@@ -1989,9 +2018,19 @@ textarea:focus {
   word-break: break-word;
 }
 
+.simple-bar-chart__label--horizontal {
+  text-align: left;
+}
+
 .simple-bar-chart__value {
   font-size: 0.8rem;
   color: var(--color-text-tertiary);
+}
+
+.simple-bar-chart__value--horizontal {
+  text-align: right;
+  font-weight: 600;
+  color: var(--color-text-heading);
 }
 
 .simple-bar-chart__empty {

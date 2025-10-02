@@ -1810,6 +1810,175 @@ const benefitsAnalysisLineMax = computed(() => {
   return max > 0 ? max : 0
 })
 
+const benefitsAnalysisPortfolioPerformanceSeries = [
+  { key: 'net', label: 'Cumulative net value', color: '#14b8a6' }
+]
+
+const benefitsAnalysisPortfolioPerformance = computed(() => {
+  const now = new Date()
+  if (!(now instanceof Date) || Number.isNaN(now.getTime())) {
+    return { points: [], hasData: false, minValue: 0, latestValue: 0 }
+  }
+
+  let earliestFeeDate = null
+  let earliestEventDate = null
+  const events = []
+
+  for (const card of benefitsAnalysisActiveCards.value) {
+    const feeAmount = Number(card.annual_fee ?? 0)
+    if (!Number.isFinite(feeAmount) || feeAmount <= 0) {
+      continue
+    }
+    const dueDate = parseDate(card.fee_due_date)
+    if (!(dueDate instanceof Date) || Number.isNaN(dueDate.getTime())) {
+      continue
+    }
+    if (!earliestFeeDate || dueDate < earliestFeeDate) {
+      earliestFeeDate = dueDate
+    }
+    if (dueDate <= now) {
+      events.push({ date: new Date(dueDate), amount: -feeAmount })
+      if (!earliestEventDate || dueDate < earliestEventDate) {
+        earliestEventDate = dueDate
+      }
+    }
+  }
+
+  const redemptions = benefitsAnalysisRedemptions.value
+
+  for (const entries of redemptions.values()) {
+    if (!Array.isArray(entries)) {
+      continue
+    }
+    for (const entry of entries) {
+      const occurred = parseDate(entry?.occurred_on)
+      const amount = Number(entry?.amount ?? 0)
+      if (!(occurred instanceof Date) || Number.isNaN(occurred.getTime())) {
+        continue
+      }
+      if (!Number.isFinite(amount) || amount === 0 || occurred > now) {
+        continue
+      }
+      events.push({ date: new Date(occurred), amount })
+      if (!earliestEventDate || occurred < earliestEventDate) {
+        earliestEventDate = occurred
+      }
+    }
+  }
+
+  for (const { benefit } of benefitsAnalysisBenefitEntries.value) {
+    if (benefit?.type !== 'standard' || !benefit.is_used || !benefit.used_at) {
+      continue
+    }
+    const entries = redemptions.get(benefit.id)
+    if (entries && entries.length) {
+      continue
+    }
+    const usedAt = parseDate(benefit.used_at)
+    if (!(usedAt instanceof Date) || Number.isNaN(usedAt.getTime()) || usedAt > now) {
+      continue
+    }
+    const amount = getCycleTargetValue(benefit)
+    if (!Number.isFinite(amount) || amount <= 0) {
+      continue
+    }
+    events.push({ date: new Date(usedAt), amount })
+    if (!earliestEventDate || usedAt < earliestEventDate) {
+      earliestEventDate = usedAt
+    }
+  }
+
+  const timelineStart = (() => {
+    if (earliestFeeDate && earliestFeeDate <= now) {
+      return new Date(earliestFeeDate.getFullYear(), earliestFeeDate.getMonth(), 1)
+    }
+    if (earliestFeeDate && earliestFeeDate > now) {
+      return null
+    }
+    if (earliestEventDate && earliestEventDate <= now) {
+      return new Date(earliestEventDate.getFullYear(), earliestEventDate.getMonth(), 1)
+    }
+    return null
+  })()
+
+  if (!timelineStart) {
+    return { points: [], hasData: false, minValue: 0, latestValue: 0 }
+  }
+
+  const endDate = new Date(now.getFullYear(), now.getMonth(), 1)
+  if (timelineStart > endDate) {
+    return { points: [], hasData: false, minValue: 0, latestValue: 0 }
+  }
+
+  const months = []
+  const cursor = new Date(timelineStart)
+  while (cursor <= endDate) {
+    months.push(new Date(cursor))
+    cursor.setMonth(cursor.getMonth() + 1)
+  }
+
+  const monthKey = (date) => `${date.getFullYear()}-${date.getMonth()}`
+  const monthlyTotals = new Map(months.map((date) => [monthKey(date), 0]))
+
+  for (const event of events) {
+    const normalizedDate = new Date(event.date.getFullYear(), event.date.getMonth(), 1)
+    if (normalizedDate > endDate) {
+      continue
+    }
+    const key = monthKey(normalizedDate)
+    if (!monthlyTotals.has(key)) {
+      continue
+    }
+    const amount = Number(event.amount ?? 0)
+    if (!Number.isFinite(amount) || amount === 0) {
+      continue
+    }
+    monthlyTotals.set(key, (monthlyTotals.get(key) ?? 0) + amount)
+  }
+
+  const monthFormatter = new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    year: 'numeric'
+  })
+
+  let runningTotal = 0
+  let minValue = 0
+  const points = months.map((date) => {
+    const key = monthKey(date)
+    const delta = Number(monthlyTotals.get(key) ?? 0)
+    const safeDelta = Number.isFinite(delta) ? delta : 0
+    runningTotal += safeDelta
+    if (runningTotal < minValue) {
+      minValue = runningTotal
+    }
+    return {
+      label: monthFormatter.format(date),
+      values: { net: runningTotal }
+    }
+  })
+
+  const hasData = events.length > 0
+
+  return {
+    points: hasData ? points : [],
+    hasData,
+    minValue: minValue < 0 ? minValue : 0,
+    latestValue: runningTotal
+  }
+})
+
+const benefitsAnalysisPortfolioPerformancePoints = computed(
+  () => benefitsAnalysisPortfolioPerformance.value.points
+)
+
+const benefitsAnalysisPortfolioPerformanceHasData = computed(
+  () => benefitsAnalysisPortfolioPerformance.value.hasData
+)
+
+const benefitsAnalysisPortfolioPerformanceMin = computed(
+  () => benefitsAnalysisPortfolioPerformance.value.minValue
+)
+
 const benefitsAnalysisUtilizedByCard = computed(() => {
   const entries = benefitsAnalysisActiveCards.value.map((card, index) => {
     const utilized = Number(card.utilized_value ?? 0)
@@ -3739,6 +3908,27 @@ onMounted(async () => {
 
             <article
               class="section-card analysis-card"
+              :style="analysisCardUnits(2, 4)"
+            >
+              <header class="analysis-card__header">
+                <h3 class="analysis-card__title">Portfolio performance</h3>
+                <p class="analysis-card__subtitle">
+                  Cumulative net value of benefits after annual fees.
+                </p>
+              </header>
+              <template v-if="benefitsAnalysisPortfolioPerformanceHasData">
+                <SimpleLineChart
+                  :points="benefitsAnalysisPortfolioPerformancePoints"
+                  :series="benefitsAnalysisPortfolioPerformanceSeries"
+                  :y-min="benefitsAnalysisPortfolioPerformanceMin"
+                  aria-label="Cumulative portfolio performance by month"
+                />
+              </template>
+              <p v-else class="analysis-empty">No portfolio performance data available yet.</p>
+            </article>
+
+            <article
+              class="section-card analysis-card"
               :style="analysisCardUnits(1, 2)"
             >
               <header class="analysis-card__header">
@@ -3844,6 +4034,7 @@ onMounted(async () => {
               </header>
               <SimpleBarChart
                 :data="benefitsAnalysisUtilizedByCard"
+                orientation="horizontal"
                 aria-label="Utilized benefits by card"
               />
             </article>

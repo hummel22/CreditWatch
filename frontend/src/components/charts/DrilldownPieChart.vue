@@ -1,8 +1,7 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Highcharts from 'highcharts'
 import drilldownModule from 'highcharts/modules/drilldown'
-import { Chart } from 'highcharts-vue'
 
 if (!Highcharts.__creditwatchDrilldownInitialized) {
   drilldownModule(Highcharts)
@@ -120,11 +119,47 @@ const chartOptions = computed(() => {
     }
   }
 })
+
+const chartContainer = ref(null)
+let chartInstance = null
+
+function renderChart() {
+  if (!chartContainer.value) {
+    return
+  }
+
+  const options = chartOptions.value
+
+  if (chartInstance) {
+    chartInstance.update(options, true, true)
+  } else {
+    chartInstance = Highcharts.chart(chartContainer.value, options)
+  }
+}
+
+onMounted(() => {
+  renderChart()
+})
+
+watch(
+  chartOptions,
+  () => {
+    renderChart()
+  },
+  { deep: true }
+)
+
+onBeforeUnmount(() => {
+  if (chartInstance) {
+    chartInstance.destroy()
+    chartInstance = null
+  }
+})
 </script>
 
 <template>
   <div class="drilldown-pie-chart" role="img" :aria-label="ariaLabel">
-    <Chart :options="chartOptions" :highcharts="Highcharts" class="drilldown-pie-chart__chart" />
+    <div ref="chartContainer" class="drilldown-pie-chart__chart" />
   </div>
 </template>
 

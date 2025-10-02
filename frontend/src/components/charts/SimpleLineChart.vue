@@ -1,8 +1,7 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Highcharts from 'highcharts'
 import accessibilityModule from 'highcharts/modules/accessibility'
-import { Chart } from 'highcharts-vue'
 
 if (!Highcharts.__creditwatchAccessibilityInitialized) {
   accessibilityModule(Highcharts)
@@ -174,11 +173,47 @@ const chartOptions = computed(() => {
     series: chartSeries
   }
 })
+
+const chartContainer = ref(null)
+let chartInstance = null
+
+function renderChart() {
+  if (!chartContainer.value) {
+    return
+  }
+
+  const options = chartOptions.value
+
+  if (chartInstance) {
+    chartInstance.update(options, true, true)
+  } else {
+    chartInstance = Highcharts.chart(chartContainer.value, options)
+  }
+}
+
+onMounted(() => {
+  renderChart()
+})
+
+watch(
+  chartOptions,
+  () => {
+    renderChart()
+  },
+  { deep: true }
+)
+
+onBeforeUnmount(() => {
+  if (chartInstance) {
+    chartInstance.destroy()
+    chartInstance = null
+  }
+})
 </script>
 
 <template>
   <figure class="simple-line-chart" role="img" :aria-label="ariaLabel">
-    <Chart :options="chartOptions" :highcharts="Highcharts" class="simple-line-chart__chart" />
+    <div ref="chartContainer" class="simple-line-chart__chart" />
     <table class="sr-only">
       <caption>{{ ariaLabel }}</caption>
       <thead>

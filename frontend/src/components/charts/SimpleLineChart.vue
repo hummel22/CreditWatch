@@ -31,6 +31,10 @@ const props = defineProps({
   yMax: {
     type: Number,
     default: null
+  },
+  yMin: {
+    type: Number,
+    default: null
   }
 })
 
@@ -66,7 +70,7 @@ const accessibleRows = computed(() =>
 )
 
 const yAxisMax = computed(() => {
-  if (typeof props.yMax === 'number' && Number.isFinite(props.yMax) && props.yMax > 0) {
+  if (typeof props.yMax === 'number' && Number.isFinite(props.yMax)) {
     return props.yMax
   }
   let max = 0
@@ -78,6 +82,21 @@ const yAxisMax = computed(() => {
     }
   }
   return max > 0 ? max : null
+})
+
+const yAxisMin = computed(() => {
+  if (typeof props.yMin === 'number' && Number.isFinite(props.yMin)) {
+    return props.yMin
+  }
+  let min = 0
+  for (const point of accessibleRows.value) {
+    for (const entry of point.values) {
+      if (Number.isFinite(entry.value) && entry.value < min) {
+        min = entry.value
+      }
+    }
+  }
+  return min < 0 ? min : 0
 })
 
 const formatter = new Intl.NumberFormat(undefined, {
@@ -134,7 +153,7 @@ const chartOptions = computed(() => ({
     }
   },
   yaxis: {
-    min: 0,
+    min: yAxisMin.value ?? undefined,
     max: yAxisMax.value ?? undefined,
     labels: {
       formatter(value) {

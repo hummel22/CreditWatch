@@ -3713,7 +3713,7 @@ onMounted(async () => {
 
             <article
               class="section-card analysis-card"
-              :style="analysisCardUnits(1, 4)"
+              :style="analysisCardUnits(1, 3)"
             >
               <header class="analysis-card__header">
                 <h3 class="analysis-card__title">Utilization rate by card</h3>
@@ -3752,7 +3752,7 @@ onMounted(async () => {
 
             <article
               class="section-card analysis-card"
-              :style="analysisCardUnits(2, 4)"
+              :style="analysisCardUnits(2, 3)"
             >
               <header class="analysis-card__header">
                 <h3 class="analysis-card__title">Benefit mix by type</h3>

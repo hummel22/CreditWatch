@@ -32,7 +32,7 @@ const navDrawerOpen = ref(false)
 const navItems = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'benefits', label: 'Benefits' },
-  { id: 'benefits-analysis', label: 'Benefits analysis' },
+  { id: 'benefits-analysis', label: 'Analysis' },
   { id: 'bugs', label: 'Bug Tracker' },
   { id: 'admin', label: 'Admin' }
 ]
@@ -1562,6 +1562,59 @@ const benefitsAnalysisTotals = computed(() => {
     potential,
     net: utilized - annualFees
   }
+})
+
+const benefitsAnalysisTotalRedemptions = computed(() => {
+  let total = 0
+  const redemptions = benefitsAnalysisRedemptions.value
+  const today = new Date()
+
+  for (const { card, benefit } of benefitsAnalysisBenefitEntries.value) {
+    if (!benefit || !card) {
+      continue
+    }
+
+    const cycle = computeBenefitCycle(card, benefit, today)
+    const cycleStart = cycle?.start
+    const cycleEnd = cycle?.end
+
+    if (!cycleStart || !cycleEnd) {
+      continue
+    }
+
+    const entries = redemptions.get(benefit.id)
+    let hasCycleEntries = false
+
+    if (Array.isArray(entries)) {
+      for (const entry of entries) {
+        const amount = Number(entry?.amount ?? 0)
+        if (!Number.isFinite(amount)) {
+          continue
+        }
+        if (isWithinRange(entry?.occurred_on, cycleStart, cycleEnd)) {
+          total += amount
+          hasCycleEntries = true
+        }
+      }
+    }
+
+    if (
+      !hasCycleEntries &&
+      benefit?.type === 'standard' &&
+      benefit.is_used &&
+      benefit.used_at
+    ) {
+      const usedAt = parseDate(benefit.used_at)
+      if (usedAt && isWithinRange(usedAt, cycleStart, cycleEnd)) {
+        const amount = getCycleTargetValue(benefit)
+        if (amount > 0) {
+          total += amount
+        }
+      }
+    }
+  }
+
+  return total
 })
 
 const benefitsAnalysisFeePieChart = computed(() => {
@@ -3574,7 +3627,7 @@ onMounted(async () => {
           <div class="content-constrained">
             <div class="section-header">
               <div>
-                <h2 class="section-title">Benefits analysis</h2>
+                <h2 class="section-title">Analysis</h2>
                 <p class="section-description">
                   Explore annual fee trends and benefit performance across your cards.
                 </p>
@@ -3593,7 +3646,7 @@ onMounted(async () => {
               {{ benefitsAnalysisState.warning }}
             </p>
             <p v-if="!benefitsAnalysisHasCards" class="empty-state">
-              Add cards to view the benefits analysis.
+              Add cards to view the analysis.
             </p>
           </div>
           <div v-if="benefitsAnalysisHasCards" class="analysis-grid content-constrained">
@@ -3607,8 +3660,23 @@ onMounted(async () => {
                   Combined annual fees across all active cards.
                 </p>
               </header>
-              <div class="analysis-highlight">
+              <div class="analysis-highlight analysis-highlight--compact">
                 ${{ benefitsAnalysisTotals.annualFees.toFixed(2) }}
+              </div>
+            </article>
+
+            <article
+              class="section-card analysis-card"
+              :style="analysisCardUnits(1, 2)"
+            >
+              <header class="analysis-card__header">
+                <h3 class="analysis-card__title">Total redemption</h3>
+                <p class="analysis-card__subtitle">
+                  Value redeemed within each card's current reward cycle.
+                </p>
+              </header>
+              <div class="analysis-highlight analysis-highlight--compact">
+                ${{ benefitsAnalysisTotalRedemptions.toFixed(2) }}
               </div>
             </article>
 

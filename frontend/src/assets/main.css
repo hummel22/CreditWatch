@@ -1842,6 +1842,11 @@ textarea:focus {
   text-align: center;
 }
 
+.analysis-highlight--compact {
+  padding: 0.625rem;
+  font-size: clamp(1.4rem, 1.2vw + 0.9rem, 2rem);
+}
+
 .analysis-summary {
   list-style: none;
   margin: 0;

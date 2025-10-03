@@ -1763,10 +1763,12 @@ textarea:focus {
 
   .analysis-grid {
     grid-template-columns: 1fr;
+    grid-auto-rows: auto;
   }
 
   .analysis-card {
     grid-column: span 1;
+    grid-row: auto;
     min-width: 0;
   }
 }
@@ -1785,20 +1787,22 @@ textarea:focus {
   --analysis-grid-columns: 6;
   display: grid;
   grid-template-columns: repeat(var(--analysis-grid-columns), minmax(0, 1fr));
+  grid-auto-rows: minmax(180px, auto);
   gap: 1.5rem;
   margin-top: 1.75rem;
   grid-auto-flow: dense;
 }
 
 .analysis-card {
-  --analysis-card-min-units: 2;
-  --analysis-card-max-units: 2;
+  --analysis-card-columns: 2;
+  --analysis-card-rows: 1;
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
   height: 100%;
-  grid-column: span var(--analysis-card-max-units);
-  min-width: calc((100% / var(--analysis-grid-columns)) * var(--analysis-card-min-units));
+  grid-column: span var(--analysis-card-columns);
+  grid-row: span var(--analysis-card-rows);
+  min-width: 0;
 }
 
 .analysis-card--visual {
@@ -1815,8 +1819,27 @@ textarea:focus {
 
 .analysis-card__header {
   display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.analysis-card__heading {
+  display: flex;
   flex-direction: column;
   gap: 0.4rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.analysis-card__edit-button {
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+
+.analysis-card__edit-button svg {
+  width: 20px;
+  height: 20px;
 }
 
 .analysis-card__title {
@@ -1830,6 +1853,36 @@ textarea:focus {
   margin: 0;
   color: var(--color-text-secondary);
   font-size: 0.95rem;
+}
+
+.analysis-layout-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.analysis-layout-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.analysis-layout-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.analysis-layout-field input[type='number'] {
+  width: 100%;
+}
+
+.analysis-layout-description {
+  margin-bottom: 0.75rem;
+}
+
+.analysis-layout-hint {
+  margin-top: -0.5rem;
 }
 
 .analysis-highlight {

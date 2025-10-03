@@ -2057,15 +2057,253 @@ const benefitsAnalysisHasBenefits = computed(
   () => benefitsAnalysisBenefitEntries.value.length > 0
 )
 
-function analysisCardUnits(minUnits, maxUnits) {
-  const safeMin = Number.isFinite(Number(minUnits)) ? Number(minUnits) : 1
-  const safeMax = Number.isFinite(Number(maxUnits)) ? Number(maxUnits) : safeMin
-  const clampedMin = Math.max(1, Math.min(safeMin, 6))
-  const clampedMax = Math.max(clampedMin, Math.min(safeMax, 6))
-  return {
-    '--analysis-card-min-units': clampedMin,
-    '--analysis-card-max-units': clampedMax
+const ANALYSIS_GRID_COLUMNS = 6
+const ANALYSIS_GRID_MAX_ROWS = 6
+const ANALYSIS_LAYOUT_STORAGE_KEY = 'benefits-analysis-layout'
+
+const ANALYSIS_CARD_DEFAULT_LAYOUT = {
+  'annual-fee-total': { columns: 2, rows: 1 },
+  'total-redemption': { columns: 2, rows: 1 },
+  'annual-fees-by-card': { columns: 4, rows: 2 },
+  'annual-fee-timeline': { columns: 6, rows: 3 },
+  'benefit-performance-trend': { columns: 4, rows: 2 },
+  'portfolio-performance': { columns: 4, rows: 2 },
+  'portfolio-summary': { columns: 2, rows: 2 },
+  'utilization-rate': { columns: 3, rows: 2 },
+  'benefit-mix': { columns: 3, rows: 2 },
+  'top-utilized-cards': { columns: 3, rows: 2 }
+}
+
+const benefitsAnalysisCardMetadata = {
+  'annual-fee-total': {
+    title: 'Annual fee total',
+    description: 'Combined annual fees across all active cards.'
+  },
+  'total-redemption': {
+    title: 'Total redemption',
+    description: "Value redeemed within each card's current reward cycle."
+  },
+  'annual-fees-by-card': {
+    title: 'Annual fees by card',
+    description: 'Distribution of annual fees across your portfolio.'
+  },
+  'annual-fee-timeline': {
+    title: 'Annual fee timeline',
+    description: 'When annual fees are due throughout the year.'
+  },
+  'benefit-performance-trend': {
+    title: 'Benefit performance trend',
+    description:
+      'Month-by-month view of redeemed benefits versus annual fees.'
+  },
+  'portfolio-performance': {
+    title: 'Portfolio performance',
+    description: 'Cumulative net value of benefits after annual fees.'
+  },
+  'portfolio-summary': {
+    title: 'Portfolio summary',
+    description: 'Snapshot of benefit value across your active cards.'
+  },
+  'utilization-rate': {
+    title: 'Utilization rate by card',
+    description: 'Redeemed value compared to potential for each card.'
+  },
+  'benefit-mix': {
+    title: 'Benefit mix by type',
+    description: 'Potential value grouped by benefit type.'
+  },
+  'top-utilized-cards': {
+    title: 'Top utilized cards',
+    description: 'Cards delivering the highest redeemed value this cycle.'
   }
+}
+
+function clampAnalysisLayoutValue(value, min, max) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) {
+    return min
+  }
+  return Math.min(Math.max(Math.round(numeric), min), max)
+}
+
+function createDefaultAnalysisLayout() {
+  return Object.fromEntries(
+    Object.entries(ANALYSIS_CARD_DEFAULT_LAYOUT).map(([cardId, defaults]) => [
+      cardId,
+      { columns: defaults.columns, rows: defaults.rows }
+    ])
+  )
+}
+
+function loadAnalysisLayout() {
+  const layout = createDefaultAnalysisLayout()
+  if (typeof window === 'undefined') {
+    return layout
+  }
+  try {
+    const raw = window.localStorage.getItem(ANALYSIS_LAYOUT_STORAGE_KEY)
+    if (!raw) {
+      return layout
+    }
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') {
+      return layout
+    }
+    for (const [cardId, storedConfig] of Object.entries(parsed)) {
+      if (!(cardId in layout)) {
+        continue
+      }
+      const defaults = ANALYSIS_CARD_DEFAULT_LAYOUT[cardId]
+      const columns = clampAnalysisLayoutValue(
+        storedConfig?.columns ?? defaults.columns,
+        1,
+        ANALYSIS_GRID_COLUMNS
+      )
+      const rows = clampAnalysisLayoutValue(
+        storedConfig?.rows ?? defaults.rows,
+        1,
+        ANALYSIS_GRID_MAX_ROWS
+      )
+      layout[cardId] = { columns, rows }
+    }
+  } catch (error) {
+    return layout
+  }
+  return layout
+}
+
+const benefitsAnalysisLayout = reactive(loadAnalysisLayout())
+
+function persistAnalysisLayout() {
+  if (typeof window === 'undefined') {
+    return
+  }
+  const payload = {}
+  for (const [cardId, defaults] of Object.entries(
+    ANALYSIS_CARD_DEFAULT_LAYOUT
+  )) {
+    const entry = benefitsAnalysisLayout[cardId] ?? defaults
+    const columns = clampAnalysisLayoutValue(
+      entry?.columns ?? defaults.columns,
+      1,
+      ANALYSIS_GRID_COLUMNS
+    )
+    const rows = clampAnalysisLayoutValue(
+      entry?.rows ?? defaults.rows,
+      1,
+      ANALYSIS_GRID_MAX_ROWS
+    )
+    payload[cardId] = { columns, rows }
+  }
+  try {
+    window.localStorage.setItem(
+      ANALYSIS_LAYOUT_STORAGE_KEY,
+      JSON.stringify(payload)
+    )
+  } catch (error) {
+    // Silently ignore storage errors
+  }
+}
+
+watch(
+  benefitsAnalysisLayout,
+  () => {
+    persistAnalysisLayout()
+  },
+  { deep: true }
+)
+
+function getAnalysisCardLayout(cardId) {
+  const defaults = ANALYSIS_CARD_DEFAULT_LAYOUT[cardId] ?? {
+    columns: 2,
+    rows: 1
+  }
+  const entry = benefitsAnalysisLayout[cardId]
+  const columns = clampAnalysisLayoutValue(
+    entry?.columns ?? defaults.columns,
+    1,
+    ANALYSIS_GRID_COLUMNS
+  )
+  const rows = clampAnalysisLayoutValue(
+    entry?.rows ?? defaults.rows,
+    1,
+    ANALYSIS_GRID_MAX_ROWS
+  )
+  return { columns, rows }
+}
+
+function analysisCardStyle(cardId) {
+  const layout = getAnalysisCardLayout(cardId)
+  return {
+    '--analysis-card-columns': layout.columns,
+    '--analysis-card-rows': layout.rows
+  }
+}
+
+function analysisCardEditLabel(cardId) {
+  const metadata = benefitsAnalysisCardMetadata[cardId]
+  if (metadata?.title) {
+    return `Configure ${metadata.title} card`
+  }
+  return 'Configure analysis card'
+}
+
+const analysisLayoutModal = reactive({
+  open: false,
+  cardId: '',
+  columns: 2,
+  rows: 1
+})
+
+const analysisLayoutModalTitle = computed(() => {
+  if (!analysisLayoutModal.cardId) {
+    return 'Configure analysis card'
+  }
+  const metadata = benefitsAnalysisCardMetadata[analysisLayoutModal.cardId]
+  if (metadata?.title) {
+    return `Configure ${metadata.title}`
+  }
+  return 'Configure analysis card'
+})
+
+const analysisLayoutModalDescription = computed(() => {
+  if (!analysisLayoutModal.cardId) {
+    return ''
+  }
+  const metadata = benefitsAnalysisCardMetadata[analysisLayoutModal.cardId]
+  return metadata?.description ?? ''
+})
+
+function openAnalysisLayoutModal(cardId) {
+  const layout = getAnalysisCardLayout(cardId)
+  analysisLayoutModal.cardId = cardId
+  analysisLayoutModal.columns = layout.columns
+  analysisLayoutModal.rows = layout.rows
+  analysisLayoutModal.open = true
+}
+
+function closeAnalysisLayoutModal() {
+  analysisLayoutModal.open = false
+  analysisLayoutModal.cardId = ''
+}
+
+function saveAnalysisLayout() {
+  if (!analysisLayoutModal.cardId) {
+    closeAnalysisLayoutModal()
+    return
+  }
+  const columns = clampAnalysisLayoutValue(
+    analysisLayoutModal.columns,
+    1,
+    ANALYSIS_GRID_COLUMNS
+  )
+  const rows = clampAnalysisLayoutValue(
+    analysisLayoutModal.rows,
+    1,
+    ANALYSIS_GRID_MAX_ROWS
+  )
+  benefitsAnalysisLayout[analysisLayoutModal.cardId] = { columns, rows }
+  closeAnalysisLayoutModal()
 }
 
 function invalidateBenefitsAnalysis() {
@@ -3821,13 +4059,31 @@ onMounted(async () => {
           <div v-if="benefitsAnalysisHasCards" class="analysis-grid content-constrained">
             <article
               class="section-card analysis-card"
-              :style="analysisCardUnits(1, 2)"
+              :style="analysisCardStyle('annual-fee-total')"
             >
               <header class="analysis-card__header">
-                <h3 class="analysis-card__title">Annual fee total</h3>
-                <p class="analysis-card__subtitle">
-                  Combined annual fees across all active cards.
-                </p>
+                <div class="analysis-card__heading">
+                  <h3 class="analysis-card__title">Annual fee total</h3>
+                  <p class="analysis-card__subtitle">
+                    Combined annual fees across all active cards.
+                  </p>
+                </div>
+                <button
+                  class="icon-button ghost analysis-card__edit-button"
+                  type="button"
+                  :aria-label="analysisCardEditLabel('annual-fee-total')"
+                  :title="analysisCardEditLabel('annual-fee-total')"
+                  @click="openAnalysisLayoutModal('annual-fee-total')"
+                >
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                    <path
+                      d="M4.5 12.75 3.75 16.25 7.25 15.5 16 6.75 13.25 4 4.5 12.75Z"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                    <path d="M11.5 5.75 14.25 8.5" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </button>
               </header>
               <div class="analysis-highlight analysis-highlight--compact">
                 ${{ benefitsAnalysisTotals.annualFees.toFixed(2) }}
@@ -3836,13 +4092,31 @@ onMounted(async () => {
 
             <article
               class="section-card analysis-card"
-              :style="analysisCardUnits(1, 2)"
+              :style="analysisCardStyle('total-redemption')"
             >
               <header class="analysis-card__header">
-                <h3 class="analysis-card__title">Total redemption</h3>
-                <p class="analysis-card__subtitle">
-                  Value redeemed within each card's current reward cycle.
-                </p>
+                <div class="analysis-card__heading">
+                  <h3 class="analysis-card__title">Total redemption</h3>
+                  <p class="analysis-card__subtitle">
+                    Value redeemed within each card's current reward cycle.
+                  </p>
+                </div>
+                <button
+                  class="icon-button ghost analysis-card__edit-button"
+                  type="button"
+                  :aria-label="analysisCardEditLabel('total-redemption')"
+                  :title="analysisCardEditLabel('total-redemption')"
+                  @click="openAnalysisLayoutModal('total-redemption')"
+                >
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                    <path
+                      d="M4.5 12.75 3.75 16.25 7.25 15.5 16 6.75 13.25 4 4.5 12.75Z"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                    <path d="M11.5 5.75 14.25 8.5" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </button>
               </header>
               <div class="analysis-highlight analysis-highlight--compact">
                 ${{ benefitsAnalysisTotalRedemptions.toFixed(2) }}
@@ -3851,13 +4125,31 @@ onMounted(async () => {
 
             <article
               class="section-card analysis-card analysis-card--visual"
-              :style="analysisCardUnits(3, 4)"
+              :style="analysisCardStyle('annual-fees-by-card')"
             >
               <header class="analysis-card__header">
-                <h3 class="analysis-card__title">Annual fees by card</h3>
-                <p class="analysis-card__subtitle">
-                  Distribution of annual fees across your portfolio.
-                </p>
+                <div class="analysis-card__heading">
+                  <h3 class="analysis-card__title">Annual fees by card</h3>
+                  <p class="analysis-card__subtitle">
+                    Distribution of annual fees across your portfolio.
+                  </p>
+                </div>
+                <button
+                  class="icon-button ghost analysis-card__edit-button"
+                  type="button"
+                  :aria-label="analysisCardEditLabel('annual-fees-by-card')"
+                  :title="analysisCardEditLabel('annual-fees-by-card')"
+                  @click="openAnalysisLayoutModal('annual-fees-by-card')"
+                >
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                    <path
+                      d="M4.5 12.75 3.75 16.25 7.25 15.5 16 6.75 13.25 4 4.5 12.75Z"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                    <path d="M11.5 5.75 14.25 8.5" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </button>
               </header>
               <div
                 v-if="benefitsAnalysisFeePieChart.series.length"
@@ -3874,13 +4166,31 @@ onMounted(async () => {
 
             <article
               class="section-card analysis-card analysis-card--visual"
-              :style="analysisCardUnits(2, 6)"
+              :style="analysisCardStyle('annual-fee-timeline')"
             >
               <header class="analysis-card__header">
-                <h3 class="analysis-card__title">Annual fee timeline</h3>
-                <p class="analysis-card__subtitle">
-                  When annual fees are due throughout the year.
-                </p>
+                <div class="analysis-card__heading">
+                  <h3 class="analysis-card__title">Annual fee timeline</h3>
+                  <p class="analysis-card__subtitle">
+                    When annual fees are due throughout the year.
+                  </p>
+                </div>
+                <button
+                  class="icon-button ghost analysis-card__edit-button"
+                  type="button"
+                  :aria-label="analysisCardEditLabel('annual-fee-timeline')"
+                  :title="analysisCardEditLabel('annual-fee-timeline')"
+                  @click="openAnalysisLayoutModal('annual-fee-timeline')"
+                >
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                    <path
+                      d="M4.5 12.75 3.75 16.25 7.25 15.5 16 6.75 13.25 4 4.5 12.75Z"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                    <path d="M11.5 5.75 14.25 8.5" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </button>
               </header>
               <TimelineBarChart
                 :data="benefitsAnalysisMonthlyFeeTimeline"
@@ -3890,13 +4200,31 @@ onMounted(async () => {
 
             <article
               class="section-card analysis-card"
-              :style="analysisCardUnits(2, 4)"
+              :style="analysisCardStyle('benefit-performance-trend')"
             >
               <header class="analysis-card__header">
-                <h3 class="analysis-card__title">Benefit performance trend</h3>
-                <p class="analysis-card__subtitle">
-                  Month-by-month view of redeemed benefits versus annual fees.
-                </p>
+                <div class="analysis-card__heading">
+                  <h3 class="analysis-card__title">Benefit performance trend</h3>
+                  <p class="analysis-card__subtitle">
+                    Month-by-month view of redeemed benefits versus annual fees.
+                  </p>
+                </div>
+                <button
+                  class="icon-button ghost analysis-card__edit-button"
+                  type="button"
+                  :aria-label="analysisCardEditLabel('benefit-performance-trend')"
+                  :title="analysisCardEditLabel('benefit-performance-trend')"
+                  @click="openAnalysisLayoutModal('benefit-performance-trend')"
+                >
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                    <path
+                      d="M4.5 12.75 3.75 16.25 7.25 15.5 16 6.75 13.25 4 4.5 12.75Z"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                    <path d="M11.5 5.75 14.25 8.5" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </button>
               </header>
               <SimpleLineChart
                 :points="benefitsAnalysisLinePoints"
@@ -3908,13 +4236,31 @@ onMounted(async () => {
 
             <article
               class="section-card analysis-card"
-              :style="analysisCardUnits(2, 4)"
+              :style="analysisCardStyle('portfolio-performance')"
             >
               <header class="analysis-card__header">
-                <h3 class="analysis-card__title">Portfolio performance</h3>
-                <p class="analysis-card__subtitle">
-                  Cumulative net value of benefits after annual fees.
-                </p>
+                <div class="analysis-card__heading">
+                  <h3 class="analysis-card__title">Portfolio performance</h3>
+                  <p class="analysis-card__subtitle">
+                    Cumulative net value of benefits after annual fees.
+                  </p>
+                </div>
+                <button
+                  class="icon-button ghost analysis-card__edit-button"
+                  type="button"
+                  :aria-label="analysisCardEditLabel('portfolio-performance')"
+                  :title="analysisCardEditLabel('portfolio-performance')"
+                  @click="openAnalysisLayoutModal('portfolio-performance')"
+                >
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                    <path
+                      d="M4.5 12.75 3.75 16.25 7.25 15.5 16 6.75 13.25 4 4.5 12.75Z"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                    <path d="M11.5 5.75 14.25 8.5" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </button>
               </header>
               <template v-if="benefitsAnalysisPortfolioPerformanceHasData">
                 <SimpleLineChart
@@ -3929,13 +4275,31 @@ onMounted(async () => {
 
             <article
               class="section-card analysis-card"
-              :style="analysisCardUnits(1, 2)"
+              :style="analysisCardStyle('portfolio-summary')"
             >
               <header class="analysis-card__header">
-                <h3 class="analysis-card__title">Portfolio summary</h3>
-                <p class="analysis-card__subtitle">
-                  Snapshot of benefit value across your active cards.
-                </p>
+                <div class="analysis-card__heading">
+                  <h3 class="analysis-card__title">Portfolio summary</h3>
+                  <p class="analysis-card__subtitle">
+                    Snapshot of benefit value across your active cards.
+                  </p>
+                </div>
+                <button
+                  class="icon-button ghost analysis-card__edit-button"
+                  type="button"
+                  :aria-label="analysisCardEditLabel('portfolio-summary')"
+                  :title="analysisCardEditLabel('portfolio-summary')"
+                  @click="openAnalysisLayoutModal('portfolio-summary')"
+                >
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                    <path
+                      d="M4.5 12.75 3.75 16.25 7.25 15.5 16 6.75 13.25 4 4.5 12.75Z"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                    <path d="M11.5 5.75 14.25 8.5" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </button>
               </header>
               <ul class="analysis-summary">
                 <li>
@@ -3967,13 +4331,31 @@ onMounted(async () => {
 
             <article
               class="section-card analysis-card"
-              :style="analysisCardUnits(1, 3)"
+              :style="analysisCardStyle('utilization-rate')"
             >
               <header class="analysis-card__header">
-                <h3 class="analysis-card__title">Utilization rate by card</h3>
-                <p class="analysis-card__subtitle">
-                  Redeemed value compared to potential for each card.
-                </p>
+                <div class="analysis-card__heading">
+                  <h3 class="analysis-card__title">Utilization rate by card</h3>
+                  <p class="analysis-card__subtitle">
+                    Redeemed value compared to potential for each card.
+                  </p>
+                </div>
+                <button
+                  class="icon-button ghost analysis-card__edit-button"
+                  type="button"
+                  :aria-label="analysisCardEditLabel('utilization-rate')"
+                  :title="analysisCardEditLabel('utilization-rate')"
+                  @click="openAnalysisLayoutModal('utilization-rate')"
+                >
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                    <path
+                      d="M4.5 12.75 3.75 16.25 7.25 15.5 16 6.75 13.25 4 4.5 12.75Z"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                    <path d="M11.5 5.75 14.25 8.5" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </button>
               </header>
               <div v-if="benefitsAnalysisUtilizationRows.length" class="analysis-utilization-table-wrapper">
                 <table class="analysis-utilization-table">
@@ -4006,13 +4388,31 @@ onMounted(async () => {
 
             <article
               class="section-card analysis-card"
-              :style="analysisCardUnits(2, 3)"
+              :style="analysisCardStyle('benefit-mix')"
             >
               <header class="analysis-card__header">
-                <h3 class="analysis-card__title">Benefit mix by type</h3>
-                <p class="analysis-card__subtitle">
-                  Potential value grouped by benefit type.
-                </p>
+                <div class="analysis-card__heading">
+                  <h3 class="analysis-card__title">Benefit mix by type</h3>
+                  <p class="analysis-card__subtitle">
+                    Potential value grouped by benefit type.
+                  </p>
+                </div>
+                <button
+                  class="icon-button ghost analysis-card__edit-button"
+                  type="button"
+                  :aria-label="analysisCardEditLabel('benefit-mix')"
+                  :title="analysisCardEditLabel('benefit-mix')"
+                  @click="openAnalysisLayoutModal('benefit-mix')"
+                >
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                    <path
+                      d="M4.5 12.75 3.75 16.25 7.25 15.5 16 6.75 13.25 4 4.5 12.75Z"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                    <path d="M11.5 5.75 14.25 8.5" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </button>
               </header>
               <div class="analysis-card__visual">
                 <SimplePieChart
@@ -4024,13 +4424,31 @@ onMounted(async () => {
 
             <article
               class="section-card analysis-card"
-              :style="analysisCardUnits(1, 2)"
+              :style="analysisCardStyle('top-utilized-cards')"
             >
               <header class="analysis-card__header">
-                <h3 class="analysis-card__title">Top utilized cards</h3>
-                <p class="analysis-card__subtitle">
-                  Cards delivering the highest redeemed value this cycle.
-                </p>
+                <div class="analysis-card__heading">
+                  <h3 class="analysis-card__title">Top utilized cards</h3>
+                  <p class="analysis-card__subtitle">
+                    Cards delivering the highest redeemed value this cycle.
+                  </p>
+                </div>
+                <button
+                  class="icon-button ghost analysis-card__edit-button"
+                  type="button"
+                  :aria-label="analysisCardEditLabel('top-utilized-cards')"
+                  :title="analysisCardEditLabel('top-utilized-cards')"
+                  @click="openAnalysisLayoutModal('top-utilized-cards')"
+                >
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                    <path
+                      d="M4.5 12.75 3.75 16.25 7.25 15.5 16 6.75 13.25 4 4.5 12.75Z"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                    <path d="M11.5 5.75 14.25 8.5" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </button>
               </header>
               <SimpleBarChart
                 :data="benefitsAnalysisUtilizedByCard"
@@ -5146,6 +5564,59 @@ onMounted(async () => {
         <button class="primary-button" type="submit" :disabled="adminSaving">
           {{ adminSaving ? 'Saving…' : 'Save template' }}
         </button>
+      </div>
+    </form>
+  </BaseModal>
+
+  <BaseModal
+    :open="analysisLayoutModal.open"
+    :title="analysisLayoutModalTitle"
+    @close="closeAnalysisLayoutModal"
+  >
+    <p
+      v-if="analysisLayoutModalDescription"
+      class="helper-text subtle-text analysis-layout-description"
+    >
+      {{ analysisLayoutModalDescription }}
+    </p>
+    <form class="analysis-layout-form" @submit.prevent="saveAnalysisLayout">
+      <div class="analysis-layout-grid">
+        <label class="analysis-layout-field">
+          <span class="field-label">Width (columns)</span>
+          <input
+            v-model.number="analysisLayoutModal.columns"
+            type="number"
+            min="1"
+            :max="ANALYSIS_GRID_COLUMNS"
+            required
+          />
+          <p class="helper-text subtle-text">
+            Choose how many of the {{ ANALYSIS_GRID_COLUMNS }} columns this card spans.
+          </p>
+        </label>
+        <label class="analysis-layout-field">
+          <span class="field-label">Height (rows)</span>
+          <input
+            v-model.number="analysisLayoutModal.rows"
+            type="number"
+            min="1"
+            :max="ANALYSIS_GRID_MAX_ROWS"
+            required
+          />
+          <p class="helper-text subtle-text">
+            Taller cards reserve additional grid rows for dense content.
+          </p>
+        </label>
+      </div>
+      <p class="helper-text subtle-text analysis-layout-hint">
+        Adjusting the layout lets you organize the dashboard similar to observability tools.
+        Cards will automatically reposition to fill the grid.
+      </p>
+      <div class="modal-actions">
+        <button class="primary-button secondary" type="button" @click="closeAnalysisLayoutModal">
+          Cancel
+        </button>
+        <button class="primary-button" type="submit">Save layout</button>
       </div>
     </form>
   </BaseModal>

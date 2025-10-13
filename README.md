@@ -39,6 +39,12 @@ The script will create (or reuse) a local virtual environment in `.venv`, instal
 
 This script installs JavaScript dependencies, writes the required Vite environment variables, builds the production bundle, and serves it via `vite preview` on `http://127.0.0.1:4173`. Use `FRONTEND_HOST`, `FRONTEND_PORT`, `BACKEND_URL`, or `BACKEND_PORT` environment variables to customize the runtime configuration.
 
+### Progressive Web App install
+
+The Vue frontend is PWA-enabled via [`vite-plugin-pwa`](https://vite-plugin-pwa.netlify.app/). When the preview or production build is served over HTTPS (or `localhost`), browsers expose an **Install** option so CreditWatch can run standalone with offline caching for static assets.
+
+During development the service worker auto-updates. If you make frontend changes and notice stale assets, refresh the page to load the latest version.
+
 ## Running with Docker Compose
 
 If you prefer containers, the project ships with a ready-to-use Compose definition.

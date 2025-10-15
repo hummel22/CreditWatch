@@ -13,6 +13,10 @@ const props = defineProps({
   frequencies: {
     type: Array,
     default: () => ['monthly', 'quarterly', 'semiannual', 'yearly']
+  },
+  benefitEditRequest: {
+    type: Object,
+    default: null
   }
 })
 
@@ -35,6 +39,7 @@ const benefitsExpanded = ref(true)
 const formMode = ref('create')
 const editingBenefitId = ref(null)
 const autoExpiration = ref(true)
+const lastBenefitEditToken = ref(0)
 
 const defaultFrequency = computed(() => props.frequencies[0] || 'monthly')
 const benefitTypes = ['standard', 'incremental', 'cumulative']
@@ -246,6 +251,26 @@ watch(alignmentSelection, () => {
     applyFrequencyDefaults()
   }
 })
+
+watch(
+  () => props.benefitEditRequest?.token,
+  (token) => {
+    if (!token || token === lastBenefitEditToken.value) {
+      return
+    }
+    const request = props.benefitEditRequest
+    if (!request || request.cardId !== props.card.id) {
+      return
+    }
+    const targetBenefit = props.card.benefits.find((benefit) => benefit.id === request.benefitId)
+    if (!targetBenefit) {
+      lastBenefitEditToken.value = token
+      return
+    }
+    lastBenefitEditToken.value = token
+    populateForm(targetBenefit)
+  }
+)
 
 const baseline = computed(() =>
   Math.max(props.card.annual_fee, props.card.potential_value, props.card.utilized_value, 1)

@@ -9,6 +9,10 @@ const props = defineProps({
   frequencies: {
     type: Array,
     default: () => ['monthly', 'quarterly', 'semiannual', 'yearly']
+  },
+  benefitEditRequest: {
+    type: Object,
+    default: null
   }
 })
 
@@ -45,6 +49,7 @@ const emit = defineEmits([
       @view-card-history="emit('view-card-history', $event)"
       @view-benefit-windows="emit('view-benefit-windows', $event)"
       @export-template="emit('export-template', $event)"
+      :benefit-edit-request="props.benefitEditRequest"
     />
   </div>
 </template>

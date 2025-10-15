@@ -33,6 +33,7 @@ const navItems = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'benefits', label: 'Benefits' },
   { id: 'benefits-analysis', label: 'Analysis' },
+  { id: 'notifications', label: 'Notifications' },
   { id: 'bugs', label: 'Bug Tracker' },
   { id: 'admin', label: 'Admin' }
 ]
@@ -41,9 +42,16 @@ const viewToPathMap = {
   dashboard: '/',
   benefits: '/benefits',
   'benefits-analysis': '/benefits-analysis',
+  notifications: '/notifications',
   bugs: '/bugs',
   admin: '/admin'
 }
+
+const benefitEditRequest = reactive({
+  cardId: null,
+  benefitId: null,
+  token: 0
+})
 
 const interfaceSettings = reactive({
   id: null,
@@ -211,6 +219,7 @@ const scrollPositions = reactive({
   dashboard: 0,
   benefits: 0,
   'benefits-analysis': 0,
+  notifications: 0,
   bugs: 0,
   admin: 0
 })
@@ -258,14 +267,19 @@ async function restoreScrollPosition(view = currentView.value, fallback = null) 
   })
 }
 
-const notificationHistoryModal = reactive({
-  open: false,
+const notificationHistoryState = reactive({
   loading: false,
   entries: [],
   error: '',
   search: '',
   sortDirection: 'desc',
-  limit: 50
+  limit: 50,
+  initialized: false
+})
+
+const notificationDetailModal = reactive({
+  open: false,
+  entry: null
 })
 
 const backupTestLoading = ref(false)
@@ -288,6 +302,7 @@ const confirmDialog = reactive({
 const isDashboardView = computed(() => currentView.value === 'dashboard')
 const isBenefitsView = computed(() => currentView.value === 'benefits')
 const isBenefitsAnalysisView = computed(() => currentView.value === 'benefits-analysis')
+const isNotificationsView = computed(() => currentView.value === 'notifications')
 const isBugTrackerView = computed(() => currentView.value === 'bugs')
 const isAdminView = computed(() => currentView.value === 'admin')
 const showNewCardButton = computed(
@@ -355,6 +370,16 @@ watch(
   (view) => {
     if (view === 'benefits-analysis') {
       ensureBenefitsAnalysisData()
+    }
+  },
+  { immediate: true }
+)
+
+watch(
+  isNotificationsView,
+  (active) => {
+    if (active) {
+      ensureNotificationHistoryLoaded()
     }
   },
   { immediate: true }
@@ -982,43 +1007,94 @@ function formatNotificationEventType(value) {
     .replace(/\b\w/g, (char) => char.toUpperCase())
 }
 
+function formatNotificationEntryType(entry) {
+  if (!entry) {
+    return ''
+  }
+  const labels = []
+  if (entry.event_type === 'custom') {
+    labels.push('AF Due Date Alert')
+  } else if (entry.event_type === 'daily' || entry.event_type === 'daily_test') {
+    labels.push('Benefits Expiring Alert')
+  }
+  const categories = entry.categories || {}
+  const hasExpiring =
+    (Array.isArray(categories.expiring_today) && categories.expiring_today.length > 0) ||
+    (Array.isArray(categories.expiring_in_10_days) &&
+      categories.expiring_in_10_days.length > 0) ||
+    (Array.isArray(categories.expiring_this_month) &&
+      categories.expiring_this_month.length > 0)
+  if (hasExpiring && !labels.includes('Benefits Expiring Alert')) {
+    labels.push('Benefits Expiring Alert')
+  }
+  if (Array.isArray(categories.cancelled_cards) && categories.cancelled_cards.length > 0) {
+    labels.push('Cancel Card Alert')
+  }
+  if (!labels.length) {
+    labels.push(formatNotificationEventType(entry.event_type))
+  }
+  return labels.join(' • ')
+}
+
+function formatNotificationSimulationDate(entry) {
+  if (!entry) {
+    return ''
+  }
+  const title = typeof entry.title === 'string' ? entry.title : ''
+  const match = title.match(/for\s+(.+)$/i)
+  if (match && match[1]) {
+    const parsed = new Date(match[1])
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toLocaleDateString()
+    }
+  }
+  if (entry.created_at) {
+    const created = new Date(entry.created_at)
+    if (!Number.isNaN(created.getTime())) {
+      return created.toLocaleDateString()
+    }
+  }
+  return ''
+}
+
 async function loadNotificationHistory() {
-  notificationHistoryModal.loading = true
-  notificationHistoryModal.error = ''
-  notificationHistoryModal.entries = []
+  notificationHistoryState.loading = true
+  notificationHistoryState.error = ''
   try {
     const params = {
-      limit: Math.max(1, Math.min(200, Number(notificationHistoryModal.limit) || 50)),
+      limit: Math.max(1, Math.min(200, Number(notificationHistoryState.limit) || 50)),
       sort_direction:
-        notificationHistoryModal.sortDirection === 'asc' ? 'asc' : 'desc',
+        notificationHistoryState.sortDirection === 'asc' ? 'asc' : 'desc'
     }
-    const trimmedSearch = notificationHistoryModal.search.trim()
+    const trimmedSearch = notificationHistoryState.search.trim()
     if (trimmedSearch) {
       params.search = trimmedSearch
     }
     const response = await apiClient.get('/api/admin/notifications/history', {
-      params,
+      params
     })
-    notificationHistoryModal.entries = Array.isArray(response.data) ? response.data : []
+    notificationHistoryState.entries = Array.isArray(response.data) ? response.data : []
   } catch (err) {
-    notificationHistoryModal.error = extractErrorMessage(
+    notificationHistoryState.error = extractErrorMessage(
       err,
       'Unable to load notification history.'
     )
-    notificationHistoryModal.entries = []
+    notificationHistoryState.entries = []
   } finally {
-    notificationHistoryModal.loading = false
+    notificationHistoryState.loading = false
+    notificationHistoryState.initialized = true
   }
 }
 
-async function openNotificationHistory() {
-  notificationHistoryModal.open = true
+async function ensureNotificationHistoryLoaded({ force = false } = {}) {
+  if (force) {
+    await loadNotificationHistory()
+    return
+  }
+  if (notificationHistoryState.initialized) {
+    return
+  }
   await loadNotificationHistory()
-}
-
-function closeNotificationHistory() {
-  notificationHistoryModal.open = false
-  notificationHistoryModal.loading = false
 }
 
 async function applyNotificationHistorySearch() {
@@ -1026,17 +1102,41 @@ async function applyNotificationHistorySearch() {
 }
 
 function clearNotificationHistorySearch() {
-  if (!notificationHistoryModal.search) {
+  if (!notificationHistoryState.search) {
     return
   }
-  notificationHistoryModal.search = ''
+  notificationHistoryState.search = ''
   loadNotificationHistory()
 }
 
 async function toggleNotificationHistorySort() {
-  notificationHistoryModal.sortDirection =
-    notificationHistoryModal.sortDirection === 'desc' ? 'asc' : 'desc'
+  notificationHistoryState.sortDirection =
+    notificationHistoryState.sortDirection === 'desc' ? 'asc' : 'desc'
   await loadNotificationHistory()
+}
+
+function openNotificationDetail(entry) {
+  if (!entry) {
+    return
+  }
+  notificationDetailModal.entry = {
+    ...entry,
+    categories: entry.categories || {}
+  }
+  notificationDetailModal.open = true
+}
+
+function closeNotificationDetail() {
+  notificationDetailModal.open = false
+  notificationDetailModal.entry = null
+}
+
+async function refreshNotificationHistoryAfterTest() {
+  if (isNotificationsView.value) {
+    await loadNotificationHistory()
+  } else {
+    notificationHistoryState.initialized = false
+  }
 }
 
 function requestConfirmation(options = {}) {
@@ -1101,6 +1201,7 @@ async function sendCustomNotificationTest() {
     )
   } finally {
     notificationTestsLoading.custom = false
+    await refreshNotificationHistoryAfterTest()
   }
 }
 
@@ -1127,6 +1228,7 @@ async function sendDailyNotificationTest() {
     )
   } finally {
     notificationTestsLoading.daily = false
+    await refreshNotificationHistoryAfterTest()
   }
 }
 
@@ -3000,7 +3102,9 @@ function handleAddRedemption(payload) {
   redemptionModal.occurred_on = formatDateInput(defaultDate)
   redemptionModal.card = card
   redemptionModal.markComplete =
-    trackedBenefit.type === 'cumulative' ? Boolean(trackedBenefit.is_used) : false
+    ['cumulative', 'incremental'].includes(trackedBenefit.type)
+      ? Boolean(trackedBenefit.is_used)
+      : false
 }
 
 function closeRedemptionModal() {
@@ -3026,9 +3130,10 @@ async function submitRedemption() {
     if (!Number.isFinite(amount) || amount <= 0) {
       return
     }
-    const isCumulative = redemptionModal.benefit?.type === 'cumulative'
-    const markComplete = isCumulative ? Boolean(redemptionModal.markComplete) : null
-    const previousCompletion = isCumulative
+    const benefitType = redemptionModal.benefit?.type
+    const supportsMarkComplete = ['cumulative', 'incremental'].includes(benefitType)
+    const markComplete = supportsMarkComplete ? Boolean(redemptionModal.markComplete) : null
+    const previousCompletion = supportsMarkComplete
       ? Boolean(redemptionModal.benefit?.is_used)
       : null
     const body = {
@@ -3077,7 +3182,9 @@ function handleEditRedemption(entry) {
   redemptionModal.amount = Number(entry.amount).toString()
   redemptionModal.occurred_on = entry.occurred_on
   redemptionModal.markComplete =
-    benefit.type === 'cumulative' ? Boolean(benefit.is_used) : false
+    ['cumulative', 'incremental'].includes(benefit.type)
+      ? Boolean(benefit.is_used)
+      : false
 }
 
 async function handleDeleteRedemption(entry) {
@@ -3110,6 +3217,27 @@ async function handleViewHistory(payload) {
     error.value = 'Unable to load redemption history.'
   } finally {
     historyModal.loading = false
+  }
+}
+
+async function handleEditBenefitFromCollection(card, benefit) {
+  const cardId = card?.id
+  const benefitId = benefit?.id
+  if (!cardId || !benefitId) {
+    return
+  }
+  const alreadyOnDashboard = currentView.value === 'dashboard'
+  if (!alreadyOnDashboard) {
+    captureScrollPosition(currentView.value)
+    setView('dashboard')
+    await nextTick()
+  }
+  benefitEditRequest.cardId = cardId
+  benefitEditRequest.benefitId = benefitId
+  benefitEditRequest.token += 1
+  await nextTick()
+  if (!alreadyOnDashboard) {
+    await restoreScrollPosition('dashboard')
   }
 }
 
@@ -3960,6 +4088,7 @@ onMounted(async () => {
             <CreditCardList
               :cards="cards"
               :frequencies="frequencies"
+              :benefit-edit-request="benefitEditRequest"
               @add-benefit="handleAddBenefit"
               @toggle-benefit="handleToggleBenefit"
               @delete-benefit="handleDeleteBenefit"
@@ -4017,12 +4146,12 @@ onMounted(async () => {
                 :key="entry.benefit.id"
                 :benefit="entry.benefit"
                 :card-context="entry.card"
-                :show-edit="false"
                 @toggle="(value) => handleToggleBenefit({ id: entry.benefit.id, value })"
                 @delete="() => handleDeleteBenefit(entry.benefit.id)"
                 @add-redemption="() => handleAddRedemption({ card: entry.card, benefit: entry.benefit })"
                 @view-history="() => handleViewHistory({ card: entry.card, benefit: entry.benefit })"
                 @view-windows="() => handleViewBenefitWindows({ card: entry.card, benefit: entry.benefit })"
+                @edit="(benefit) => handleEditBenefitFromCollection(entry.card, benefit)"
               />
             </div>
           </div>
@@ -4465,7 +4594,7 @@ onMounted(async () => {
         <BugTracker />
       </template>
 
-      <template v-else>
+      <template v-else-if="isNotificationsView">
         <section class="section-card admin-board content-constrained">
           <div class="section-header">
             <div>
@@ -4473,11 +4602,6 @@ onMounted(async () => {
               <p class="section-description">
                 Configure the webhook connection used to deliver reminder notifications.
               </p>
-            </div>
-            <div class="section-actions">
-              <button class="link-button" type="button" @click="openNotificationHistory">
-                View history
-              </button>
             </div>
           </div>
           <div v-if="notificationSettingsLoading" class="empty-state">
@@ -4677,6 +4801,113 @@ onMounted(async () => {
           </div>
         </section>
 
+        <section class="section-card admin-board content-constrained">
+          <div class="section-header">
+            <div>
+              <h2 class="section-title">Notification history</h2>
+              <p class="section-description">
+                Review past reminders and simulation runs.
+              </p>
+            </div>
+          </div>
+          <div v-if="notificationHistoryState.loading" class="empty-state">
+            Loading notification history...
+          </div>
+          <template v-else>
+            <div class="notification-history-content">
+              <div class="notification-history-toolbar">
+                <form class="notification-history-search" @submit.prevent="applyNotificationHistorySearch">
+                  <input
+                    v-model="notificationHistoryState.search"
+                    type="search"
+                    placeholder="Search notifications"
+                    :disabled="notificationHistoryState.loading"
+                  />
+                  <button
+                    class="primary-button secondary"
+                    type="submit"
+                    :disabled="notificationHistoryState.loading"
+                  >
+                    Search
+                  </button>
+                  <button
+                    v-if="notificationHistoryState.search"
+                    class="link-button"
+                    type="button"
+                    :disabled="notificationHistoryState.loading"
+                    @click="clearNotificationHistorySearch"
+                  >
+                    Clear
+                  </button>
+                </form>
+                <button
+                  class="link-button"
+                  type="button"
+                  :disabled="notificationHistoryState.loading"
+                  @click="toggleNotificationHistorySort"
+                >
+                  Sort:
+                  {{ notificationHistoryState.sortDirection === 'desc' ? 'Newest first' : 'Oldest first' }}
+                </button>
+              </div>
+              <p v-if="notificationHistoryState.error" class="helper-text error-text">
+                {{ notificationHistoryState.error }}
+              </p>
+              <div
+                v-else-if="notificationHistoryState.entries.length"
+                class="notification-history-table-wrapper"
+              >
+                <table class="notification-history-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Sent at</th>
+                      <th scope="col">Simulated for</th>
+                      <th scope="col">Type</th>
+                      <th scope="col">Title</th>
+                      <th scope="col">Target</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="entry in notificationHistoryState.entries"
+                      :key="entry.id"
+                      class="notification-history-row"
+                      tabindex="0"
+                      role="button"
+                      @click="openNotificationDetail(entry)"
+                      @keydown.enter.prevent="openNotificationDetail(entry)"
+                      @keydown.space.prevent="openNotificationDetail(entry)"
+                    >
+                      <td>{{ formatNotificationTimestamp(entry.created_at) || '–' }}</td>
+                      <td>{{ formatNotificationSimulationDate(entry) || '–' }}</td>
+                      <td>{{ formatNotificationEntryType(entry) || '–' }}</td>
+                      <td>{{ entry.title || '–' }}</td>
+                      <td>{{ entry.target || '–' }}</td>
+                      <td>
+                        <span :class="['status-pill', entry.sent ? 'success' : 'error']">
+                          {{ entry.sent ? 'Delivered' : 'Not sent' }}
+                        </span>
+                      </td>
+                      <td>{{ entry.reason || '–' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p v-else class="empty-state">
+                {{
+                  notificationHistoryState.search
+                    ? 'No notifications match the current search.'
+                    : 'No notifications have been recorded yet.'
+                }}
+              </p>
+            </div>
+          </template>
+        </section>
+      </template>
+
+      <template v-else>
         <section class="section-card admin-board content-constrained">
           <div class="section-header">
             <div>
@@ -5192,11 +5423,17 @@ onMounted(async () => {
         <input v-model="redemptionModal.occurred_on" type="date" required />
       </div>
       <label
-        v-if="redemptionModal.benefit?.type === 'cumulative'"
+        v-if="['cumulative', 'incremental'].includes(redemptionModal.benefit?.type)"
         class="checkbox-option redemption-complete-toggle"
       >
         <input v-model="redemptionModal.markComplete" type="checkbox" />
-        <span>Mark benefit complete for this cycle</span>
+        <span>
+          {{
+            redemptionModal.benefit?.type === 'incremental'
+              ? 'Mark benefit complete even if the full value has not been reached'
+              : 'Mark benefit complete for this cycle'
+          }}
+        </span>
       </label>
       <div class="modal-actions">
         <button class="primary-button secondary" type="button" @click="closeRedemptionModal">
@@ -5622,86 +5859,77 @@ onMounted(async () => {
   </BaseModal>
 
   <BaseModal
-    :open="notificationHistoryModal.open"
-    title="Notification history"
-    @close="closeNotificationHistory"
+    :open="notificationDetailModal.open"
+    :title="notificationDetailModal.entry?.title || 'Notification details'"
+    @close="closeNotificationDetail"
   >
-    <div v-if="notificationHistoryModal.loading" class="history-loading">Loading history...</div>
-    <p v-else-if="notificationHistoryModal.error" class="helper-text error-text">
-      {{ notificationHistoryModal.error }}
-    </p>
-    <div v-else class="notification-history-content">
-      <div class="notification-history-toolbar">
-        <form class="notification-history-search" @submit.prevent="applyNotificationHistorySearch">
-          <input
-            v-model="notificationHistoryModal.search"
-            type="search"
-            placeholder="Search notifications"
-            :disabled="notificationHistoryModal.loading"
-          />
-          <button class="primary-button secondary" type="submit" :disabled="notificationHistoryModal.loading">
-            Search
-          </button>
-          <button
-            v-if="notificationHistoryModal.search"
-            class="link-button"
-            type="button"
-            :disabled="notificationHistoryModal.loading"
-            @click="clearNotificationHistorySearch"
-          >
-            Clear
-          </button>
-        </form>
-        <button
-          class="link-button"
-          type="button"
-          :disabled="notificationHistoryModal.loading"
-          @click="toggleNotificationHistorySort"
+    <template v-if="notificationDetailModal.entry">
+      <div class="notification-detail-grid">
+        <dl class="notification-detail-list">
+          <div>
+            <dt>Sent at</dt>
+            <dd>
+              {{ formatNotificationTimestamp(notificationDetailModal.entry.created_at) || '–' }}
+            </dd>
+          </div>
+          <div>
+            <dt>Simulated for</dt>
+            <dd>{{ formatNotificationSimulationDate(notificationDetailModal.entry) || '–' }}</dd>
+          </div>
+          <div>
+            <dt>Target</dt>
+            <dd>{{ notificationDetailModal.entry.target || '–' }}</dd>
+          </div>
+          <div>
+            <dt>Status</dt>
+            <dd>{{ notificationDetailModal.entry.sent ? 'Delivered' : 'Not sent' }}</dd>
+          </div>
+          <div>
+            <dt>Outcome</dt>
+            <dd>{{ notificationDetailModal.entry.response_message || '–' }}</dd>
+          </div>
+          <div>
+            <dt>Reason</dt>
+            <dd>{{ notificationDetailModal.entry.reason || '–' }}</dd>
+          </div>
+        </dl>
+        <div class="notification-detail-body">
+          <h3>Message body</h3>
+          <p>
+            {{ notificationDetailModal.entry.body || 'No message content recorded.' }}
+          </p>
+        </div>
+      </div>
+      <div
+        v-if="resolveNotificationCategories(notificationDetailModal.entry).length"
+        class="notification-detail-categories"
+      >
+        <h3>Additional details</h3>
+        <div
+          v-for="[category, items] in resolveNotificationCategories(notificationDetailModal.entry)"
+          :key="category"
+          class="notification-category"
         >
-          Sort:
-          {{ notificationHistoryModal.sortDirection === 'desc' ? 'Newest first' : 'Oldest first' }}
-        </button>
+          <h4>{{ formatNotificationCategoryLabel(category) }}</h4>
+          <ul>
+            <li
+              v-for="item in items"
+              :key="formatNotificationItemKey(category, item)"
+            >
+              {{ formatNotificationItemTitle(item) }}
+              <span v-if="formatNotificationItemDetail(item)">
+                – {{ formatNotificationItemDetail(item) }}
+              </span>
+            </li>
+          </ul>
+        </div>
       </div>
-      <div v-if="notificationHistoryModal.entries.length" class="notification-history-table-wrapper">
-        <table class="notification-history-table">
-          <thead>
-            <tr>
-              <th scope="col">Sent at</th>
-              <th scope="col">Type</th>
-              <th scope="col">Title</th>
-              <th scope="col">Target</th>
-              <th scope="col">Status</th>
-              <th scope="col">Reason</th>
-              <th scope="col">Details</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="entry in notificationHistoryModal.entries" :key="entry.id">
-              <td>{{ formatNotificationTimestamp(entry.created_at) || '–' }}</td>
-              <td>{{ formatNotificationEventType(entry.event_type) || '–' }}</td>
-              <td>{{ entry.title || '–' }}</td>
-              <td>{{ entry.target || '–' }}</td>
-              <td>
-                <span :class="['status-pill', entry.sent ? 'success' : 'error']">
-                  {{ entry.sent ? 'Delivered' : 'Not sent' }}
-                </span>
-              </td>
-              <td>{{ entry.reason || '–' }}</td>
-              <td>{{ entry.response_message || '–' }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p v-else class="empty-state">
-        {{
-          notificationHistoryModal.search
-            ? 'No notifications match the current search.'
-            : 'No notifications have been recorded yet.'
-        }}
-      </p>
-    </div>
+    </template>
+    <template v-else>
+      <p class="empty-state">No notification selected.</p>
+    </template>
     <template #footer>
-      <button class="primary-button secondary" type="button" @click="closeNotificationHistory">
+      <button class="primary-button" type="button" @click="closeNotificationDetail">
         Close
       </button>
     </template>

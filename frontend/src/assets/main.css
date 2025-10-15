@@ -1189,7 +1189,7 @@ textarea {
   background: var(--color-surface-overlay-muted);
 }
 
-.notification-history-table td:nth-child(6),
+.notification-history-table td:nth-child(5),
 .notification-history-table td:nth-child(7) {
   max-width: 14rem;
   word-break: break-word;
@@ -1197,6 +1197,21 @@ textarea {
 
 .notification-history-table tbody tr:last-child td {
   border-bottom: none;
+}
+
+.notification-history-row {
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.notification-history-row:hover {
+  background-color: var(--color-surface-overlay-muted);
+}
+
+.notification-history-row:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
+  background-color: var(--color-surface-overlay-muted);
 }
 
 .status-pill {
@@ -1217,6 +1232,75 @@ textarea {
 .status-pill.error {
   background: rgba(248, 113, 113, 0.18);
   color: #b91c1c;
+}
+
+.notification-detail-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+@media (min-width: 720px) {
+  .notification-detail-grid {
+    flex-direction: row;
+  }
+}
+
+.notification-detail-list {
+  flex: 1 1 0;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.notification-detail-list dt {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-tertiary);
+  margin-bottom: 0.25rem;
+}
+
+.notification-detail-list dd {
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.notification-detail-body {
+  flex: 1 1 0;
+  padding: 1rem;
+  background: var(--color-surface-overlay-faint);
+  border-radius: 12px;
+}
+
+.notification-detail-body h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.notification-detail-body p {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: var(--color-text-primary);
+  white-space: pre-wrap;
+}
+
+.notification-detail-categories {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.notification-detail-categories h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
 }
 
 .notification-type-settings {

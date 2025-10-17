@@ -65,6 +65,10 @@ def _run_database_initialisation_steps() -> None:
     """Perform the actual database initialisation work."""
 
     try:
+        logger.debug(
+            "Ensuring metadata tables exist using engine bound to %s",
+            engine.url,
+        )
         SQLModel.metadata.create_all(engine)
     except (OperationalError, sqlite3.OperationalError) as exc:
         _log_database_diagnostics(exc)
@@ -111,9 +115,27 @@ def _log_database_diagnostics(exc: Exception) -> None:
     """Log additional context about a database failure."""
 
     logger.error("Database initialisation failed: %s", exc)
+    logger.debug("Current working directory: %s", Path.cwd())
+    logger.debug(
+        "Environment CREDITWATCH_DATA_DIR=%r CREDITWATCH_DB_FILE=%r",
+        os.getenv("CREDITWATCH_DATA_DIR"),
+        os.getenv("CREDITWATCH_DB_FILE"),
+    )
+    logger.debug("Resolved database directory: %s", DATABASE_PATH)
+    logger.debug("Resolved database file: %s", DATABASE_FILE)
     if not DATABASE_FILE.exists():
         logger.error("Database file %s does not exist", DATABASE_FILE)
+    elif DATABASE_FILE.is_dir():
+        logger.error(
+            "Database path %s points to a directory; SQLite expects a file", DATABASE_FILE
+        )
     else:
+        if DATABASE_FILE.is_symlink():
+            try:
+                target = DATABASE_FILE.resolve(strict=False)
+            except RuntimeError:
+                target = "<cycle>"
+            logger.debug("Database file is a symlink resolving to %s", target)
         stat_info = DATABASE_FILE.stat()
         mode = oct(stat_info.st_mode & 0o777)
         logger.error("Database file permissions: mode=%s size=%s bytes", mode, stat_info.st_size)
@@ -123,12 +145,23 @@ def _log_database_diagnostics(exc: Exception) -> None:
         logger.error(
             "Database accessibility: readable=%s writable=%s", readable, writable
         )
+        _log_sqlite_integrity(DATABASE_FILE)
     directory = DATABASE_FILE.parent
     if not directory.exists():
         logger.error("Database directory %s does not exist", directory)
     else:
-        if not os.access(directory, os.W_OK):
-            logger.error("Database directory %s is not writable", directory)
+        if not directory.is_dir():
+            logger.error(
+                "Database directory path %s exists but is not a directory", directory
+            )
+        else:
+            logger.debug(
+                "Database directory contents: %s", sorted(p.name for p in directory.iterdir())
+            )
+            if not os.access(directory, os.W_OK):
+                logger.error("Database directory %s is not writable", directory)
+            else:
+                _attempt_directory_writability_check(directory)
 
 
 def _log_permission_mismatch(owner_uid: int, owner_gid: int) -> None:
@@ -148,6 +181,55 @@ def _log_permission_mismatch(owner_uid: int, owner_gid: int) -> None:
             owner_gid,
             current_gid,
         )
+
+
+def _log_sqlite_integrity(path: Path) -> None:
+    """Attempt to open the database and report corruption diagnostics."""
+
+    try:
+        with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as connection:
+            cursor = connection.execute("PRAGMA integrity_check")
+            result = cursor.fetchone()
+    except sqlite3.OperationalError as sqlite_exc:
+        logger.error(
+            "Unable to open %s for read-only integrity check: %s", path, sqlite_exc
+        )
+        return
+    if result is None:
+        logger.error("Integrity check for %s returned no rows", path)
+        return
+    status = result[0]
+    if status != "ok":
+        logger.error("Integrity check for %s reported issues: %s", path, status)
+    else:
+        logger.debug("Integrity check for %s passed", path)
+
+
+def _attempt_directory_writability_check(directory: Path) -> None:
+    """Try creating a temporary file to confirm directory write access."""
+
+    test_file = directory / ".creditwatch_write_test"
+    try:
+        with test_file.open("w", encoding="utf-8") as handle:
+            handle.write("ok")
+        logger.debug("Successfully created temporary file in %s", directory)
+    except OSError as os_exc:
+        logger.error(
+            "Failed to create a file in %s: %s. Directory may not be writable.",
+            directory,
+            os_exc,
+        )
+        return
+    finally:
+        try:
+            if test_file.exists():
+                test_file.unlink()
+        except OSError as cleanup_exc:
+            logger.warning(
+                "Could not remove temporary file %s after writability check: %s",
+                test_file,
+                cleanup_exc,
+            )
 
 
 def _safe_get_unix_credential(attr: str) -> int | None:

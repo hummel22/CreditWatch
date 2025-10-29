@@ -1476,6 +1476,24 @@ const redemptionModal = reactive({
   markComplete: false
 })
 
+const MANUAL_COMPLETION_TYPES = ['standard', 'incremental', 'cumulative']
+
+const shouldShowManualCompletionToggle = computed(() => {
+  const type = redemptionModal.benefit?.type
+  if (!type) {
+    return false
+  }
+  return MANUAL_COMPLETION_TYPES.includes(type)
+})
+
+const redemptionCompleteLabel = computed(() => {
+  const type = redemptionModal.benefit?.type
+  if (type === 'cumulative') {
+    return 'Mark benefit complete for this cycle'
+  }
+  return 'Mark benefit complete even if the full amount has not been used yet'
+})
+
 const historyModal = reactive({
   open: false,
   cardId: null,
@@ -3101,10 +3119,10 @@ function handleAddRedemption(payload) {
   const defaultDate = resolveRedemptionDateForWindow(windowContext)
   redemptionModal.occurred_on = formatDateInput(defaultDate)
   redemptionModal.card = card
-  redemptionModal.markComplete =
-    ['cumulative', 'incremental'].includes(trackedBenefit.type)
-      ? Boolean(trackedBenefit.is_used)
-      : false
+  const supportsManualCompletion = MANUAL_COMPLETION_TYPES.includes(trackedBenefit.type)
+  redemptionModal.markComplete = supportsManualCompletion
+    ? Boolean(trackedBenefit.is_used)
+    : false
 }
 
 function closeRedemptionModal() {
@@ -3131,7 +3149,9 @@ async function submitRedemption() {
       return
     }
     const benefitType = redemptionModal.benefit?.type
-    const supportsMarkComplete = ['cumulative', 'incremental'].includes(benefitType)
+    const supportsMarkComplete = benefitType
+      ? MANUAL_COMPLETION_TYPES.includes(benefitType)
+      : false
     const markComplete = supportsMarkComplete ? Boolean(redemptionModal.markComplete) : null
     const previousCompletion = supportsMarkComplete
       ? Boolean(redemptionModal.benefit?.is_used)
@@ -3181,10 +3201,9 @@ function handleEditRedemption(entry) {
   redemptionModal.label = entry.label
   redemptionModal.amount = Number(entry.amount).toString()
   redemptionModal.occurred_on = entry.occurred_on
-  redemptionModal.markComplete =
-    ['cumulative', 'incremental'].includes(benefit.type)
-      ? Boolean(benefit.is_used)
-      : false
+  redemptionModal.markComplete = MANUAL_COMPLETION_TYPES.includes(benefit.type)
+    ? Boolean(benefit.is_used)
+    : false
 }
 
 async function handleDeleteRedemption(entry) {
@@ -5423,17 +5442,11 @@ onMounted(async () => {
         <input v-model="redemptionModal.occurred_on" type="date" required />
       </div>
       <label
-        v-if="['cumulative', 'incremental'].includes(redemptionModal.benefit?.type)"
+        v-if="shouldShowManualCompletionToggle"
         class="checkbox-option redemption-complete-toggle"
       >
         <input v-model="redemptionModal.markComplete" type="checkbox" />
-        <span>
-          {{
-            redemptionModal.benefit?.type === 'incremental'
-              ? 'Mark benefit complete even if the full value has not been reached'
-              : 'Mark benefit complete for this cycle'
-          }}
-        </span>
+        <span>{{ redemptionCompleteLabel }}</span>
       </label>
       <div class="modal-actions">
         <button class="primary-button secondary" type="button" @click="closeRedemptionModal">

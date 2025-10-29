@@ -159,6 +159,31 @@ const expirationLabel = computed(() => {
   }).format(displayDate)
 })
 
+const cardContextLabel = computed(() => {
+  const rawName =
+    typeof props.cardContext?.card_name === 'string'
+      ? props.cardContext.card_name.trim()
+      : ''
+  const rawLastFour =
+    typeof props.cardContext?.last_four === 'string'
+      ? props.cardContext.last_four.trim()
+      : ''
+
+  const sections = []
+  if (rawName) {
+    sections.push(rawName)
+  }
+
+  if (rawLastFour) {
+    const lastDigits = rawLastFour.slice(-4)
+    if (lastDigits) {
+      sections.push(`Ending ${lastDigits}`)
+    }
+  }
+
+  return sections.join(' · ')
+})
+
 const missedWindowValue = computed(() => {
   if (!['standard', 'incremental'].includes(props.benefit.type)) {
     return 0
@@ -428,6 +453,7 @@ const showUsedValue = computed(() => {
     <section class="benefit-body">
       <p v-if="benefit.description">{{ benefit.description }}</p>
       <p class="benefit-expiration">Expires: {{ expirationLabel }}</p>
+      <p v-if="cardContextLabel" class="benefit-card-context">{{ cardContextLabel }}</p>
       <div v-if="incrementalProgress" class="benefit-progress-group">
         <div
           class="benefit-progress-chart"
@@ -684,6 +710,12 @@ const showUsedValue = computed(() => {
   font-size: 0.85rem;
   margin: 0;
   color: #94a3b8;
+}
+
+.benefit-card-context {
+  font-size: 0.8rem;
+  margin: 0.1rem 0 0;
+  color: #cbd5f5;
 }
 
 .benefit-type {

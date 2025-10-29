@@ -27,7 +27,8 @@ const emit = defineEmits([
   'edit-card',
   'view-card-history',
   'view-benefit-windows',
-  'export-template'
+  'export-template',
+  'benefit-modal-closed'
 ])
 </script>
 
@@ -49,6 +50,7 @@ const emit = defineEmits([
       @view-card-history="emit('view-card-history', $event)"
       @view-benefit-windows="emit('view-benefit-windows', $event)"
       @export-template="emit('export-template', $event)"
+      @benefit-modal-closed="emit('benefit-modal-closed')"
       :benefit-edit-request="props.benefitEditRequest"
     />
   </div>

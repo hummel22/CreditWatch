@@ -1329,6 +1329,9 @@ def _compute_benefit_expiration(
     if not isinstance(cycle_end, date):
         cycle_end = fallback_cycle_end
     window_end = context.get("window_end")
+    reference_date = context.get("reference_date")
+    if not isinstance(reference_date, date):
+        reference_date = date.today()
 
     expected_expiration: date | None = None
     if frequency == BenefitFrequency.yearly:
@@ -1341,19 +1344,27 @@ def _compute_benefit_expiration(
     ) and isinstance(window_end, date):
         expected_expiration = window_end - timedelta(days=1)
 
-    if benefit.window_tracking_mode is not None and expected_expiration is not None:
+    stored_expiration = benefit.expiration_date
+
+    if expected_expiration is None:
+        return stored_expiration
+
+    if stored_expiration is None:
         return expected_expiration
 
-    if benefit.expiration_date:
-        if (
-            expected_expiration is not None
-            and benefit.window_tracking_mode is not None
-            and benefit.expiration_date != expected_expiration
-        ):
-            return expected_expiration
-        return benefit.expiration_date
+    if (
+        stored_expiration < reference_date
+        and expected_expiration >= reference_date
+    ):
+        return expected_expiration
 
-    return expected_expiration
+    if (
+        benefit.window_tracking_mode is not None
+        and stored_expiration != expected_expiration
+    ):
+        return expected_expiration
+
+    return stored_expiration
 
 
 def _resolve_current_window_value(

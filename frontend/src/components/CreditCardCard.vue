@@ -31,7 +31,8 @@ const emit = defineEmits([
   'edit-card',
   'view-card-history',
   'view-benefit-windows',
-  'export-template'
+  'export-template',
+  'benefit-modal-closed'
 ])
 
 const benefitModalOpen = ref(false)
@@ -437,6 +438,7 @@ function closeBenefitModal() {
   formMode.value = 'create'
   editingBenefitId.value = null
   resetForm()
+  emit('benefit-modal-closed')
 }
 
 function toggleBenefits() {

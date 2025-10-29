@@ -3201,10 +3201,9 @@ function handleEditRedemption(entry) {
   redemptionModal.label = entry.label
   redemptionModal.amount = Number(entry.amount).toString()
   redemptionModal.occurred_on = entry.occurred_on
-  redemptionModal.markComplete =
-    ['cumulative', 'incremental'].includes(benefit.type)
-      ? Boolean(benefit.is_used)
-      : false
+  redemptionModal.markComplete = MANUAL_COMPLETION_TYPES.includes(benefit.type)
+    ? Boolean(benefit.is_used)
+    : false
 }
 
 async function handleDeleteRedemption(entry) {

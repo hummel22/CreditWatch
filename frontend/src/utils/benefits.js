@@ -1,14 +1,29 @@
 import { parseDate } from './dates'
 
-function getExpirationTime(benefit) {
-  if (!benefit || !benefit.expiration_date) {
+function getCurrentWindowDueTime(benefit) {
+  if (!benefit) {
     return Number.POSITIVE_INFINITY
   }
-  const parsed = parseDate(benefit.expiration_date)
-  if (!(parsed instanceof Date) || Number.isNaN(parsed.getTime())) {
-    return Number.POSITIVE_INFINITY
+
+  const candidates = [
+    benefit.current_window_due_date,
+    benefit.current_window_end_date,
+    benefit.current_window_end,
+    benefit.window_end,
+    benefit.expiration_date
+  ]
+
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue
+    }
+    const parsed = parseDate(candidate)
+    if (parsed instanceof Date && !Number.isNaN(parsed.getTime())) {
+      return parsed.getTime()
+    }
   }
-  return parsed.getTime()
+
+  return Number.POSITIVE_INFINITY
 }
 
 export function isBenefitCompleted(benefit) {
@@ -59,8 +74,8 @@ export function compareBenefits(a, b) {
   if (completedA !== completedB) {
     return completedA ? 1 : -1
   }
-  const timeA = getExpirationTime(a)
-  const timeB = getExpirationTime(b)
+  const timeA = getCurrentWindowDueTime(a)
+  const timeB = getCurrentWindowDueTime(b)
   if (timeA === timeB) {
     const nameA = a?.name ?? ''
     const nameB = b?.name ?? ''

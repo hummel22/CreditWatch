@@ -717,7 +717,7 @@ def sync_benefit_usage_status(session: Session, benefit: Benefit | int) -> None:
             if isinstance(benefit_obj.used_at, datetime)
             else None
         )
-        period_start = window_start if benefit_obj.type == BenefitType.standard else cycle_start
+        period_start = window_start or cycle_start
         if used_at is not None and (period_start is None or used_at >= period_start):
             return
 

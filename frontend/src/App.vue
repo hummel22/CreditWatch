@@ -53,6 +53,8 @@ const benefitEditRequest = reactive({
   token: 0
 })
 
+const previousViewBeforeBenefitEdit = ref(null)
+
 const interfaceSettings = reactive({
   id: null,
   theme_mode: 'light'
@@ -3247,9 +3249,12 @@ async function handleEditBenefitFromCollection(card, benefit) {
   }
   const alreadyOnDashboard = currentView.value === 'dashboard'
   if (!alreadyOnDashboard) {
+    previousViewBeforeBenefitEdit.value = currentView.value
     captureScrollPosition(currentView.value)
     setView('dashboard')
     await nextTick()
+  } else {
+    previousViewBeforeBenefitEdit.value = null
   }
   benefitEditRequest.cardId = cardId
   benefitEditRequest.benefitId = benefitId
@@ -3258,6 +3263,19 @@ async function handleEditBenefitFromCollection(card, benefit) {
   if (!alreadyOnDashboard) {
     await restoreScrollPosition('dashboard')
   }
+}
+
+async function handleBenefitModalClosed() {
+  const targetView = previousViewBeforeBenefitEdit.value
+  if (!targetView) {
+    return
+  }
+  previousViewBeforeBenefitEdit.value = null
+  if (currentView.value !== targetView) {
+    setView(targetView)
+    await nextTick()
+  }
+  await restoreScrollPosition(targetView)
 }
 
 async function handleUpdateBenefit({ cardId, benefitId, payload }) {
@@ -4119,6 +4137,7 @@ onMounted(async () => {
               @view-card-history="handleViewCardHistory"
               @view-benefit-windows="handleViewBenefitWindows"
               @export-template="handleExportTemplate"
+              @benefit-modal-closed="handleBenefitModalClosed"
             />
           </div>
         </section>

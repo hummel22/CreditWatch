@@ -196,7 +196,7 @@ def update_benefit(session: Session, benefit: Benefit, payload: BenefitUpdate) -
         benefit.window_tracking_mode = None
 
     if is_used is not None:
-        if benefit.type == BenefitType.standard:
+        if benefit.type in (BenefitType.standard, BenefitType.incremental):
             benefit.is_used = is_used
             benefit.used_at = datetime.utcnow() if is_used else None
         elif benefit.type == BenefitType.cumulative:
@@ -692,6 +692,8 @@ def sync_benefit_usage_status(session: Session, benefit: Benefit | int) -> None:
         return
 
     today = date.today()
+    mode = benefit_obj.window_tracking_mode or card.year_tracking_mode
+    cycle_start, _cycle_end = _compute_cycle_bounds(card, mode, today)
     window_start, window_end, window_index = _resolve_window_bounds(
         session, card, benefit_obj, today
     )
@@ -708,6 +710,16 @@ def sync_benefit_usage_status(session: Session, benefit: Benefit | int) -> None:
         should_be_used = target_value > 0 and total_amount >= target_value
     else:
         should_be_used = count > 0
+
+    if benefit_obj.is_used and not should_be_used:
+        used_at = (
+            benefit_obj.used_at.date()
+            if isinstance(benefit_obj.used_at, datetime)
+            else None
+        )
+        period_start = window_start or cycle_start
+        if used_at is not None and (period_start is None or used_at >= period_start):
+            return
 
     if benefit_obj.is_used != should_be_used:
         benefit_obj.is_used = should_be_used

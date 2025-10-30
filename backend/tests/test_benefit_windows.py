@@ -9,8 +9,10 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
 
+from backend.app import crud, main
 from backend.app.main import _compute_cycle_bounds, _format_cycle_label_for_mode
-from backend.app.models import BenefitType, CreditCard, YearTrackingMode
+from backend.app.models import BenefitFrequency, BenefitType, CreditCard, YearTrackingMode
+from backend.app.schemas import BenefitCreate, BenefitUpdate
 
 from .factories import add_benefit_set, create_card, reset_database
 from .shared import FREQUENCIES, WINDOW_COUNT_BY_FREQUENCY
@@ -137,3 +139,99 @@ def test_benefit_windows_endpoint_returns_sorted_names(
     assert set(names) == expected_names
     frequencies = {benefit["frequency"] for benefit in payload[0]["benefits"]}
     assert frequencies == {freq.value for freq in FREQUENCIES}
+
+
+@pytest.mark.parametrize(
+    "benefit_type",
+    [BenefitType.standard, BenefitType.incremental],
+)
+def test_manual_completion_persists_after_sync(
+    engine,
+    session_factory: sessionmaker,
+    benefit_type: BenefitType,
+) -> None:
+    """Manual completion toggles should not be reset by usage sync."""
+
+    reset_database(engine)
+    card = create_card(
+        session_factory,
+        name="Manual Completion Card",
+        card_mode=YearTrackingMode.calendar,
+    )
+
+    with session_factory() as session:
+        persistent_card = session.get(CreditCard, card.id)
+        assert persistent_card is not None
+        benefit = crud.create_benefit(
+            session,
+            persistent_card,
+            BenefitCreate(
+                name="Manual Completion Benefit",
+                description="",
+                frequency=BenefitFrequency.monthly,
+                type=benefit_type,
+                value=120.0,
+            ),
+        )
+        session.refresh(benefit)
+        updated = crud.update_benefit(
+            session,
+            benefit,
+            BenefitUpdate(is_used=True),
+        )
+        session.refresh(updated)
+
+    assert updated.is_used is True
+
+
+def test_recurring_expiration_rolls_forward(
+    engine,
+    session_factory: sessionmaker,
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Recurring benefits should surface the current window expiration date."""
+
+    reset_database(engine)
+    target_today = date(2025, 10, 29)
+
+    class FrozenDate(date):
+        @classmethod
+        def today(cls) -> date:
+            return target_today
+
+    monkeypatch.setattr(main, "date", FrozenDate)
+    monkeypatch.setattr(crud, "date", FrozenDate)
+
+    card = create_card(
+        session_factory,
+        name="Expiration Drift Card",
+        card_mode=YearTrackingMode.calendar,
+    )
+
+    with session_factory() as session:
+        persistent_card = session.get(CreditCard, card.id)
+        assert persistent_card is not None
+        benefit = crud.create_benefit(
+            session,
+            persistent_card,
+            BenefitCreate(
+                name="Monthly Streaming Credit",
+                description="",
+                frequency=BenefitFrequency.monthly,
+                type=BenefitType.standard,
+                value=15.0,
+                expiration_date=date(2025, 9, 30),
+            ),
+        )
+        session.refresh(benefit)
+        benefit_id = benefit.id
+
+    response = client.get("/api/cards")
+    assert response.status_code == 200
+    cards = response.json()
+    assert cards
+    benefits = cards[0]["benefits"]
+    payload = next(item for item in benefits if item["id"] == benefit_id)
+
+    assert payload["expiration_date"] == "2025-10-31"

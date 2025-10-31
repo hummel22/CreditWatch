@@ -29,6 +29,8 @@ const emit = defineEmits([
   'view-history',
   'update-benefit',
   'edit-card',
+  'update-annual-fee',
+  'edit-annual-fee-history',
   'view-card-history',
   'view-benefit-windows',
   'export-template',
@@ -520,6 +522,14 @@ function handleCardEdit() {
   emit('edit-card', props.card)
 }
 
+function handleUpdateAnnualFee() {
+  emit('update-annual-fee', props.card)
+}
+
+function handleEditAnnualFeeHistory() {
+  emit('edit-annual-fee-history', props.card)
+}
+
 function handleCardDelete() {
   emit('delete-card', props.card.id)
 }
@@ -586,6 +596,15 @@ function handleCardExport() {
         <span>Annual fee: <strong>${{ card.annual_fee.toFixed(2) }}</strong></span>
         <span>Potential value: <strong>${{ card.potential_value.toFixed(2) }}</strong></span>
         <span>Utilized: <strong>${{ card.utilized_value.toFixed(2) }}</strong></span>
+      </div>
+      <div class="summary-actions">
+        <button class="link-button inline" type="button" @click="handleUpdateAnnualFee">
+          Update future annual fee
+        </button>
+        <span aria-hidden="true" class="summary-divider">•</span>
+        <button class="link-button inline" type="button" @click="handleEditAnnualFeeHistory">
+          Edit annual fee history
+        </button>
       </div>
       <div class="value-bar" aria-hidden="true">
         <div class="value-bar__fee" :style="{ width: feePercent + '%' }"></div>
@@ -780,6 +799,33 @@ function handleCardExport() {
   gap: 0.6rem;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-size: 0.9rem;
+  color: #334155;
+  margin-bottom: 0.35rem;
+}
+
+.summary-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: #475569;
+  margin-bottom: 0.75rem;
+}
+
+.summary-actions .link-button {
+  padding: 0;
+}
+
+.summary-divider {
+  color: #94a3b8;
 }
 
 .card-cycle {

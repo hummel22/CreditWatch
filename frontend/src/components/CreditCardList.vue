@@ -25,6 +25,8 @@ const emit = defineEmits([
   'view-history',
   'update-benefit',
   'edit-card',
+  'update-annual-fee',
+  'edit-annual-fee-history',
   'view-card-history',
   'view-benefit-windows',
   'export-template',
@@ -47,6 +49,8 @@ const emit = defineEmits([
       @view-history="emit('view-history', $event)"
       @update-benefit="emit('update-benefit', $event)"
       @edit-card="emit('edit-card', $event)"
+      @update-annual-fee="emit('update-annual-fee', $event)"
+      @edit-annual-fee-history="emit('edit-annual-fee-history', $event)"
       @view-card-history="emit('view-card-history', $event)"
       @view-benefit-windows="emit('view-benefit-windows', $event)"
       @export-template="emit('export-template', $event)"

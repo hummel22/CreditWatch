@@ -1553,6 +1553,17 @@ const editCardModal = reactive({
   }
 })
 
+const updateAnnualFeeModal = reactive({
+  open: false,
+  cardId: null,
+  card: null,
+  futureFee: '',
+  loading: false,
+  saving: false,
+  error: '',
+  success: ''
+})
+
 const exportTemplateModal = reactive({
   open: false,
   cardId: null,
@@ -1578,6 +1589,22 @@ watch(
     }
   }
 )
+
+const annualFeeHistoryModal = reactive({
+  open: false,
+  cardId: null,
+  card: null,
+  currentYear: null,
+  currentAnnualFee: 0,
+  futureAnnualFee: 0,
+  entries: [],
+  loading: false,
+  error: '',
+  newEntry: {
+    year: '',
+    annual_fee: ''
+  }
+})
 
 const cardHistoryModal = reactive({
   open: false,
@@ -3483,6 +3510,209 @@ async function submitEditCard() {
   }
 }
 
+function closeUpdateAnnualFeeModal() {
+  updateAnnualFeeModal.open = false
+  updateAnnualFeeModal.cardId = null
+  updateAnnualFeeModal.card = null
+  updateAnnualFeeModal.futureFee = ''
+  updateAnnualFeeModal.loading = false
+  updateAnnualFeeModal.saving = false
+  updateAnnualFeeModal.error = ''
+  updateAnnualFeeModal.success = ''
+}
+
+async function fetchAnnualFeeSummary(cardId) {
+  const response = await apiClient.get(`/api/cards/${cardId}/annual-fees`)
+  return response.data
+}
+
+async function handleUpdateAnnualFee(card) {
+  updateAnnualFeeModal.open = true
+  updateAnnualFeeModal.cardId = card.id
+  updateAnnualFeeModal.card = card
+  updateAnnualFeeModal.error = ''
+  updateAnnualFeeModal.success = ''
+  updateAnnualFeeModal.futureFee = Number(
+    card.future_annual_fee ?? card.annual_fee ?? 0
+  ).toString()
+  updateAnnualFeeModal.loading = true
+  try {
+    const summary = await fetchAnnualFeeSummary(card.id)
+    if (summary && typeof summary.future_annual_fee === 'number') {
+      updateAnnualFeeModal.futureFee = Number(summary.future_annual_fee).toString()
+    }
+  } catch (err) {
+    updateAnnualFeeModal.error = extractErrorMessage(
+      err,
+      'Unable to load annual fee details.'
+    )
+  } finally {
+    updateAnnualFeeModal.loading = false
+  }
+}
+
+async function submitUpdateAnnualFee() {
+  if (!updateAnnualFeeModal.cardId) {
+    return
+  }
+  const feeInput = (updateAnnualFeeModal.futureFee || '').toString().trim()
+  const parsedFee = Number(feeInput)
+  if (Number.isNaN(parsedFee) || parsedFee < 0) {
+    updateAnnualFeeModal.error = 'Enter a valid annual fee that is zero or greater.'
+    return
+  }
+  updateAnnualFeeModal.error = ''
+  updateAnnualFeeModal.success = ''
+  updateAnnualFeeModal.saving = true
+  try {
+    await apiClient.put(
+      `/api/cards/${updateAnnualFeeModal.cardId}/annual-fees/future`,
+      { annual_fee: parsedFee }
+    )
+    await loadCards({ preserveScroll: true })
+    await refreshOpenModals()
+    const updatedCard = findCard(updateAnnualFeeModal.cardId)
+    if (updatedCard) {
+      updateAnnualFeeModal.card = updatedCard
+      updateAnnualFeeModal.futureFee = Number(
+        updatedCard.future_annual_fee ?? updatedCard.annual_fee ?? parsedFee
+      ).toString()
+    } else {
+      updateAnnualFeeModal.futureFee = parsedFee.toString()
+    }
+    updateAnnualFeeModal.success = 'Future annual fee updated.'
+  } catch (err) {
+    updateAnnualFeeModal.error = extractErrorMessage(
+      err,
+      'Unable to update the future annual fee.'
+    )
+  } finally {
+    updateAnnualFeeModal.saving = false
+  }
+}
+
+function applyAnnualFeeSummary(summary) {
+  if (!summary) {
+    return
+  }
+  annualFeeHistoryModal.currentYear = summary.current_year ?? null
+  annualFeeHistoryModal.currentAnnualFee = Number(summary.current_annual_fee ?? 0)
+  annualFeeHistoryModal.futureAnnualFee = Number(summary.future_annual_fee ?? 0)
+  const entries = Array.isArray(summary.history) ? summary.history : []
+  annualFeeHistoryModal.entries = entries
+    .slice()
+    .sort((a, b) => b.year - a.year)
+    .map((entry) => ({
+      year: entry.year,
+      value: Number(entry.annual_fee ?? 0).toString(),
+      saving: false,
+      error: ''
+    }))
+  annualFeeHistoryModal.newEntry.year = ''
+  annualFeeHistoryModal.newEntry.annual_fee = ''
+}
+
+async function loadAnnualFeeHistory(cardId) {
+  annualFeeHistoryModal.error = ''
+  annualFeeHistoryModal.loading = true
+  try {
+    const summary = await fetchAnnualFeeSummary(cardId)
+    applyAnnualFeeSummary(summary)
+  } catch (err) {
+    annualFeeHistoryModal.error = extractErrorMessage(
+      err,
+      'Unable to load annual fee history.'
+    )
+  } finally {
+    annualFeeHistoryModal.loading = false
+  }
+}
+
+async function handleEditAnnualFeeHistory(card) {
+  annualFeeHistoryModal.open = true
+  annualFeeHistoryModal.cardId = card.id
+  annualFeeHistoryModal.card = card
+  annualFeeHistoryModal.entries = []
+  annualFeeHistoryModal.error = ''
+  await loadAnnualFeeHistory(card.id)
+}
+
+function closeAnnualFeeHistoryModal() {
+  annualFeeHistoryModal.open = false
+  annualFeeHistoryModal.cardId = null
+  annualFeeHistoryModal.card = null
+  annualFeeHistoryModal.currentYear = null
+  annualFeeHistoryModal.currentAnnualFee = 0
+  annualFeeHistoryModal.futureAnnualFee = 0
+  annualFeeHistoryModal.entries = []
+  annualFeeHistoryModal.error = ''
+  annualFeeHistoryModal.newEntry.year = ''
+  annualFeeHistoryModal.newEntry.annual_fee = ''
+}
+
+async function saveAnnualFeeHistoryEntry(entry) {
+  if (!annualFeeHistoryModal.cardId) {
+    return
+  }
+  entry.error = ''
+  const feeInput = (entry.value || '').toString().trim()
+  const parsedFee = Number(feeInput)
+  if (Number.isNaN(parsedFee) || parsedFee < 0) {
+    entry.error = 'Enter a valid annual fee that is zero or greater.'
+    return
+  }
+  entry.saving = true
+  try {
+    await apiClient.put(
+      `/api/cards/${annualFeeHistoryModal.cardId}/annual-fees/${entry.year}`,
+      { annual_fee: parsedFee }
+    )
+    await loadCards({ preserveScroll: true })
+    await refreshOpenModals()
+  } catch (err) {
+    entry.error = extractErrorMessage(
+      err,
+      'Unable to update this annual fee.'
+    )
+  } finally {
+    entry.saving = false
+  }
+}
+
+async function addAnnualFeeHistoryEntry() {
+  if (!annualFeeHistoryModal.cardId) {
+    return
+  }
+  annualFeeHistoryModal.error = ''
+  const yearInput = annualFeeHistoryModal.newEntry.year.toString().trim()
+  const feeInput = annualFeeHistoryModal.newEntry.annual_fee.toString().trim()
+  const parsedYear = Number(yearInput)
+  const parsedFee = Number(feeInput)
+  if (!/^[0-9]{4}$/.test(yearInput) || parsedYear < 1900) {
+    annualFeeHistoryModal.error = 'Enter a valid four-digit year.'
+    return
+  }
+  if (Number.isNaN(parsedFee) || parsedFee < 0) {
+    annualFeeHistoryModal.error = 'Enter a valid annual fee that is zero or greater.'
+    return
+  }
+  try {
+    await apiClient.put(
+      `/api/cards/${annualFeeHistoryModal.cardId}/annual-fees/${parsedYear}`,
+      { annual_fee: parsedFee }
+    )
+    annualFeeHistoryModal.newEntry.year = ''
+    annualFeeHistoryModal.newEntry.annual_fee = ''
+    await loadCards({ preserveScroll: true })
+    await refreshOpenModals()
+  } catch (err) {
+    annualFeeHistoryModal.error = extractErrorMessage(
+      err,
+      'Unable to save the annual fee for this year.'
+    )
+  }
+}
+
 async function handleViewCardHistory(card) {
   cardHistoryModal.open = true
   cardHistoryModal.cardId = card.id
@@ -3958,6 +4188,30 @@ async function refreshOpenModals() {
       closeCardHistoryModal()
     }
   }
+  if (annualFeeHistoryModal.open && annualFeeHistoryModal.cardId) {
+    const card = findCard(annualFeeHistoryModal.cardId)
+    if (card) {
+      annualFeeHistoryModal.card = card
+      await loadAnnualFeeHistory(card.id)
+    } else {
+      closeAnnualFeeHistoryModal()
+    }
+  }
+  if (updateAnnualFeeModal.open && updateAnnualFeeModal.cardId) {
+    const card = findCard(updateAnnualFeeModal.cardId)
+    if (card) {
+      updateAnnualFeeModal.card = card
+      if (!updateAnnualFeeModal.saving) {
+        const resolvedFee =
+          card.future_annual_fee ??
+          card.annual_fee ??
+          Number(updateAnnualFeeModal.futureFee || 0)
+        updateAnnualFeeModal.futureFee = Number(resolvedFee || 0).toString()
+      }
+    } else {
+      closeUpdateAnnualFeeModal()
+    }
+  }
 }
 
 function findCard(cardId) {
@@ -4164,6 +4418,8 @@ onMounted(async () => {
               @view-history="handleViewHistory"
               @update-benefit="handleUpdateBenefit"
               @edit-card="handleEditCard"
+              @update-annual-fee="handleUpdateAnnualFee"
+              @edit-annual-fee-history="handleEditAnnualFeeHistory"
               @view-card-history="handleViewCardHistory"
               @view-benefit-windows="handleViewBenefitWindows"
               @export-template="handleExportTemplate"
@@ -5397,6 +5653,53 @@ onMounted(async () => {
   </BaseModal>
 
   <BaseModal
+    :open="updateAnnualFeeModal.open"
+    :title="
+      updateAnnualFeeModal.card
+        ? `Update future annual fee · ${updateAnnualFeeModal.card.card_name}`
+        : 'Update future annual fee'
+    "
+    @close="closeUpdateAnnualFeeModal"
+  >
+    <form @submit.prevent="submitUpdateAnnualFee">
+      <p class="helper-text subtle-text">
+        Adjust the default annual fee that will apply to future card years. This will not
+        change the current year's fee.
+      </p>
+      <div class="field-group">
+        <input
+          v-model="updateAnnualFeeModal.futureFee"
+          type="number"
+          min="0"
+          step="0.01"
+          placeholder="Future annual fee"
+          :disabled="updateAnnualFeeModal.loading || updateAnnualFeeModal.saving"
+          required
+        />
+      </div>
+      <p v-if="updateAnnualFeeModal.error" class="helper-text error-text">
+        {{ updateAnnualFeeModal.error }}
+      </p>
+      <p v-else-if="updateAnnualFeeModal.success" class="helper-text success-text">
+        {{ updateAnnualFeeModal.success }}
+      </p>
+      <div class="modal-actions">
+        <button
+          class="primary-button secondary"
+          type="button"
+          :disabled="updateAnnualFeeModal.saving"
+          @click="closeUpdateAnnualFeeModal"
+        >
+          Cancel
+        </button>
+        <button class="primary-button" type="submit" :disabled="updateAnnualFeeModal.saving">
+          {{ updateAnnualFeeModal.saving ? 'Saving…' : 'Save changes' }}
+        </button>
+      </div>
+    </form>
+  </BaseModal>
+
+  <BaseModal
     :open="exportTemplateModal.open"
     title="Export as template"
     @close="closeExportTemplateModal"
@@ -5461,6 +5764,80 @@ onMounted(async () => {
         </button>
       </div>
     </form>
+  </BaseModal>
+
+  <BaseModal
+    :open="annualFeeHistoryModal.open"
+    :title="
+      annualFeeHistoryModal.card
+        ? `Annual fee history · ${annualFeeHistoryModal.card.card_name}`
+        : 'Annual fee history'
+    "
+    @close="closeAnnualFeeHistoryModal"
+  >
+    <div v-if="annualFeeHistoryModal.loading" class="modal-loading">Loading history…</div>
+    <div v-else>
+      <p class="helper-text subtle-text">
+        Current year {{ annualFeeHistoryModal.currentYear || '—' }} fee:
+        <strong>${{ annualFeeHistoryModal.currentAnnualFee.toFixed(2) }}</strong> · Future
+        default:
+        <strong>${{ annualFeeHistoryModal.futureAnnualFee.toFixed(2) }}</strong>
+      </p>
+      <ul class="annual-fee-history-list">
+        <li v-for="entry in annualFeeHistoryModal.entries" :key="entry.year">
+          <div class="field-group annual-fee-history-entry">
+            <label class="annual-fee-history-year">{{ entry.year }}</label>
+            <input
+              v-model="entry.value"
+              type="number"
+              min="0"
+              step="0.01"
+              :disabled="entry.saving"
+            />
+            <button
+              class="primary-button secondary small"
+              type="button"
+              :disabled="entry.saving"
+              @click="saveAnnualFeeHistoryEntry(entry)"
+            >
+              {{ entry.saving ? 'Saving…' : 'Save' }}
+            </button>
+          </div>
+          <p v-if="entry.error" class="helper-text error-text">{{ entry.error }}</p>
+        </li>
+      </ul>
+      <div class="field-group annual-fee-history-add">
+        <input
+          v-model="annualFeeHistoryModal.newEntry.year"
+          type="number"
+          inputmode="numeric"
+          min="1900"
+          max="9999"
+          placeholder="Year"
+        />
+        <input
+          v-model="annualFeeHistoryModal.newEntry.annual_fee"
+          type="number"
+          min="0"
+          step="0.01"
+          placeholder="Annual fee"
+        />
+        <button class="primary-button secondary" type="button" @click="addAnnualFeeHistoryEntry">
+          Add year
+        </button>
+      </div>
+      <p v-if="annualFeeHistoryModal.error" class="helper-text error-text">
+        {{ annualFeeHistoryModal.error }}
+      </p>
+      <p class="helper-text subtle-text">
+        Updating the current year also updates the card's active annual fee.
+      </p>
+      <div class="modal-actions">
+        <button class="primary-button" type="button" @click="closeAnnualFeeHistoryModal">
+          Done
+        </button>
+      </div>
+    </div>
   </BaseModal>
 
   <BaseModal

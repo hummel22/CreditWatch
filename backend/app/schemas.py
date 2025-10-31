@@ -300,6 +300,7 @@ class CreditCardRead(CreditCardBase):
     created_at: datetime
     display_order: Optional[int] = None
     cancelled_at: Optional[datetime] = None
+    future_annual_fee: float = Field(ge=0)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -311,6 +312,23 @@ class CreditCardWithBenefits(CreditCardRead):
     net_position: float
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class CreditCardAnnualFeeHistoryEntry(SQLModel):
+    year: int = Field(ge=1900)
+    annual_fee: float = Field(ge=0)
+
+
+class CreditCardAnnualFeeHistoryResponse(SQLModel):
+    card_id: int
+    current_year: int
+    current_annual_fee: float = Field(ge=0)
+    future_annual_fee: float = Field(ge=0)
+    history: List[CreditCardAnnualFeeHistoryEntry] = Field(default_factory=list)
+
+
+class CreditCardAnnualFeeUpdate(SQLModel):
+    annual_fee: float = Field(ge=0)
 
 
 class CreditCardReorderRequest(SQLModel):

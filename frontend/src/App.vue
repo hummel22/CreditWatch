@@ -38,6 +38,36 @@ const navItems = [
   { id: 'admin', label: 'Admin' }
 ]
 
+function handleGlobalError(event) {
+  if (!event || typeof window === 'undefined') {
+    return
+  }
+  const source = typeof event.filename === 'string' ? event.filename : ''
+  if (!source.startsWith('chrome-extension://')) {
+    return
+  }
+  console.debug('[CreditWatch] Ignored extension error from browser extension', {
+    source,
+    message: event.message,
+    stack: event.error?.stack,
+    view: currentView.value
+  })
+}
+
+onMounted(() => {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.addEventListener('error', handleGlobalError)
+})
+
+onUnmounted(() => {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.removeEventListener('error', handleGlobalError)
+})
+
 const viewToPathMap = {
   dashboard: '/',
   benefits: '/benefits',

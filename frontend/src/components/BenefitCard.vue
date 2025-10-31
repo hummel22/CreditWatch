@@ -65,6 +65,9 @@ const statusTag = computed(() => {
       : { label: 'Available', tone: 'warning' }
   }
   if (type === 'incremental') {
+    if (props.benefit.is_used) {
+      return { label: 'Completed', tone: 'success' }
+    }
     const used = Number(props.benefit.current_window_total ?? 0)
     const target = Number(
       props.benefit.current_window_value ?? props.benefit.value ?? 0
@@ -99,6 +102,9 @@ const isWindowCompleted = computed(() => {
   }
 
   if (props.benefit.type === 'incremental') {
+    if (props.benefit.is_used) {
+      return true
+    }
     const rawTarget =
       props.benefit.current_window_value ??
       props.benefit.cycle_target_value ??

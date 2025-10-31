@@ -30,6 +30,9 @@ export function isBenefitCompleted(benefit) {
   if (!benefit) {
     return false
   }
+  if (benefit.is_used) {
+    return true
+  }
   if (benefit.type === 'standard') {
     return Boolean(benefit.is_used)
   }

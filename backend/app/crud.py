@@ -16,6 +16,7 @@ from .models import (
     BenefitWindowExclusion,
     Bug,
     CreditCard,
+    CreditCardAnnualFee,
     InterfaceSettings,
     NotificationLog,
     NotificationSettings,
@@ -48,10 +49,17 @@ def create_credit_card(session: Session, payload: CreditCardCreate) -> CreditCar
         max_order_result = max_order_result[0]
     max_order = max_order_result if isinstance(max_order_result, (int, float)) else None
     next_order = 0 if max_order is None else int(max_order) + 1
-    card = CreditCard(**payload.model_dump(), display_order=next_order)
+    card_data = payload.model_dump()
+    annual_fee = float(card_data.get("annual_fee", 0) or 0)
+    card = CreditCard(
+        **card_data,
+        future_annual_fee=annual_fee,
+        display_order=next_order,
+    )
     session.add(card)
     session.commit()
     session.refresh(card)
+    upsert_card_annual_fee(session, card, card.fee_due_date.year, card.annual_fee)
     return card
 
 
@@ -63,11 +71,15 @@ def update_credit_card(session: Session, card: CreditCard, payload: CreditCardUp
             update_data.setdefault("cancelled_at", datetime.utcnow())
         elif not requested_cancelled and card.is_cancelled:
             update_data.setdefault("cancelled_at", None)
+    new_annual_fee = update_data.get("annual_fee")
     for key, value in update_data.items():
         setattr(card, key, value)
     session.add(card)
     session.commit()
     session.refresh(card)
+    if new_annual_fee is not None:
+        target_year = card.fee_due_date.year if card.fee_due_date else datetime.utcnow().year
+        upsert_card_annual_fee(session, card, target_year, new_annual_fee)
     return card
 
 
@@ -81,6 +93,54 @@ def list_credit_cards(session: Session) -> List[CreditCard]:
         CreditCard.display_order, CreditCard.created_at, CreditCard.id
     )
     return session.exec(statement).all()
+
+
+def upsert_card_annual_fee(
+    session: Session, card: CreditCard, year: int, amount: float
+) -> CreditCardAnnualFee:
+    statement = select(CreditCardAnnualFee).where(
+        CreditCardAnnualFee.credit_card_id == card.id,
+        CreditCardAnnualFee.year == year,
+    )
+    entry = session.exec(statement).one_or_none()
+    now = datetime.utcnow()
+    if entry is None:
+        entry = CreditCardAnnualFee(
+            credit_card_id=card.id,
+            year=year,
+            amount=amount,
+            created_at=now,
+            updated_at=now,
+        )
+    else:
+        entry.amount = amount
+        entry.updated_at = now
+    session.add(entry)
+    session.commit()
+    session.refresh(entry)
+    if card.fee_due_date and year == card.fee_due_date.year and card.annual_fee != amount:
+        card.annual_fee = amount
+        session.add(card)
+        session.commit()
+        session.refresh(card)
+    return entry
+
+
+def list_card_annual_fees(session: Session, card: CreditCard) -> List[CreditCardAnnualFee]:
+    statement = (
+        select(CreditCardAnnualFee)
+        .where(CreditCardAnnualFee.credit_card_id == card.id)
+        .order_by(CreditCardAnnualFee.year.desc())
+    )
+    return session.exec(statement).all()
+
+
+def update_future_annual_fee(session: Session, card: CreditCard, amount: float) -> CreditCard:
+    card.future_annual_fee = amount
+    session.add(card)
+    session.commit()
+    session.refresh(card)
+    return card
 
 
 def reorder_credit_cards(session: Session, ordered_ids: Sequence[int]) -> List[CreditCard]:

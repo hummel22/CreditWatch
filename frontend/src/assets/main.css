@@ -1376,6 +1376,50 @@ form {
   gap: 0.75rem;
 }
 
+.modal-loading {
+  padding: 1rem 0;
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.annual-fee-history-list {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.annual-fee-history-entry {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.annual-fee-history-entry input {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.annual-fee-history-year {
+  min-width: 3.5rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.annual-fee-history-add {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.annual-fee-history-add input {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 input,
 select,
 textarea {

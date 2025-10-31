@@ -58,6 +58,9 @@ from .schemas import (
     BugRead,
     BugUpdate,
     CardTemplateExportRequest,
+    CreditCardAnnualFeeHistoryEntry,
+    CreditCardAnnualFeeHistoryResponse,
+    CreditCardAnnualFeeUpdate,
     CreditCardReorderRequest,
     CreditCardCreate,
     CreditCardUpdate,
@@ -567,6 +570,56 @@ def update_card(
     return build_card_response(session, updated)
 
 
+@app.get(
+    "/api/cards/{card_id}/annual-fees",
+    response_model=CreditCardAnnualFeeHistoryResponse,
+)
+def get_card_annual_fees(
+    card_id: int, session: Session = Depends(get_session)
+) -> CreditCardAnnualFeeHistoryResponse:
+    card = require_card(session, card_id)
+    session.refresh(card)
+    return build_annual_fee_history_response(session, card)
+
+
+@app.put(
+    "/api/cards/{card_id}/annual-fees/future",
+    response_model=CreditCardAnnualFeeHistoryResponse,
+)
+def update_future_card_fee(
+    card_id: int,
+    payload: CreditCardAnnualFeeUpdate,
+    session: Session = Depends(get_session),
+) -> CreditCardAnnualFeeHistoryResponse:
+    card = require_card(session, card_id)
+    crud.update_future_annual_fee(session, card, payload.annual_fee)
+    session.refresh(card)
+    schedule_backup_after_change(app)
+    return build_annual_fee_history_response(session, card)
+
+
+@app.put(
+    "/api/cards/{card_id}/annual-fees/{year}",
+    response_model=CreditCardAnnualFeeHistoryResponse,
+)
+def update_card_fee_for_year(
+    card_id: int,
+    year: int,
+    payload: CreditCardAnnualFeeUpdate,
+    session: Session = Depends(get_session),
+) -> CreditCardAnnualFeeHistoryResponse:
+    if year < 1900:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Provide a four-digit year greater than or equal to 1900.",
+        )
+    card = require_card(session, card_id)
+    crud.upsert_card_annual_fee(session, card, year, payload.annual_fee)
+    session.refresh(card)
+    schedule_backup_after_change(app)
+    return build_annual_fee_history_response(session, card)
+
+
 @app.delete(
     "/api/cards/{card_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -887,6 +940,11 @@ def build_card_response(session: Session, card: CreditCard) -> CreditCardWithBen
         potential, utilized = compute_benefit_totals(benefit)
         potential_value += potential
         utilized_value += utilized
+    future_fee = (
+        card.future_annual_fee
+        if card.future_annual_fee is not None
+        else card.annual_fee
+    )
     return CreditCardWithBenefits(
         id=card.id,
         card_name=card.card_name,
@@ -894,6 +952,7 @@ def build_card_response(session: Session, card: CreditCard) -> CreditCardWithBen
         last_four=card.last_four,
         account_name=card.account_name,
         annual_fee=card.annual_fee,
+        future_annual_fee=future_fee,
         fee_due_date=card.fee_due_date,
         year_tracking_mode=card.year_tracking_mode,
         is_cancelled=card.is_cancelled,
@@ -904,6 +963,31 @@ def build_card_response(session: Session, card: CreditCard) -> CreditCardWithBen
         potential_value=potential_value,
         utilized_value=utilized_value,
         net_position=utilized_value - card.annual_fee,
+    )
+
+
+def build_annual_fee_history_response(
+    session: Session, card: CreditCard
+) -> CreditCardAnnualFeeHistoryResponse:
+    entries = crud.list_card_annual_fees(session, card)
+    history: Dict[int, float] = {entry.year: entry.amount for entry in entries}
+    current_year = card.fee_due_date.year if card.fee_due_date else datetime.utcnow().year
+    history.setdefault(current_year, card.annual_fee)
+    ordered_entries = [
+        CreditCardAnnualFeeHistoryEntry(year=year, annual_fee=history[year])
+        for year in sorted(history)
+    ]
+    future_fee = (
+        card.future_annual_fee
+        if card.future_annual_fee is not None
+        else card.annual_fee
+    )
+    return CreditCardAnnualFeeHistoryResponse(
+        card_id=card.id,
+        current_year=current_year,
+        current_annual_fee=card.annual_fee,
+        future_annual_fee=future_fee,
+        history=ordered_entries,
     )
 
 

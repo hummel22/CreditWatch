@@ -56,6 +56,11 @@ class CreditCard(SQLModel, table=True):
     )
     account_name: str = Field(index=True, description="Account holder or user account identifier")
     annual_fee: float = Field(ge=0)
+    future_annual_fee: Optional[float] = Field(
+        default=None,
+        ge=0,
+        description="Default annual fee that applies to future cycles unless overridden",
+    )
     fee_due_date: date
     year_tracking_mode: YearTrackingMode = Field(
         default=YearTrackingMode.calendar,
@@ -76,6 +81,17 @@ class CreditCard(SQLModel, table=True):
         ge=0,
     )
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class CreditCardAnnualFee(SQLModel, table=True):
+    """Annual fee amount recorded for a specific card year."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    credit_card_id: int = Field(foreign_key="creditcard.id", index=True)
+    year: int = Field(index=True, ge=1900)
+    amount: float = Field(ge=0)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 class Benefit(SQLModel, table=True):
     """Benefit associated with a credit card."""

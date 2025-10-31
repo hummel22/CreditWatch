@@ -85,6 +85,7 @@ def _run_database_initialisation_steps() -> None:
     ensure_card_cancelled_column()
     ensure_card_cancelled_timestamp_column()
     ensure_card_display_order_column()
+    ensure_card_future_annual_fee_column()
     ensure_interface_settings_row()
 
 
@@ -387,6 +388,23 @@ def ensure_card_display_order_column() -> None:
                 "UPDATE creditcard SET display_order = ? WHERE id = ?",
                 (index, card_id),
             )
+        connection.commit()
+
+
+def ensure_card_future_annual_fee_column() -> None:
+    """Ensure credit cards have a future annual fee column populated."""
+
+    with engine.connect() as connection:
+        existing_columns = {
+            row[1] for row in connection.exec_driver_sql("PRAGMA table_info(creditcard)")
+        }
+        if "future_annual_fee" not in existing_columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE creditcard ADD COLUMN future_annual_fee FLOAT"
+            )
+        connection.exec_driver_sql(
+            "UPDATE creditcard SET future_annual_fee = annual_fee WHERE future_annual_fee IS NULL"
+        )
         connection.commit()
 
 

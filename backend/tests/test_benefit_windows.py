@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -28,8 +28,14 @@ def _freeze_today(monkeypatch: pytest.MonkeyPatch, target: date) -> None:
         def today(cls) -> date:  # type: ignore[override]
             return target
 
+    class FrozenDateTime(datetime):
+        @classmethod
+        def utcnow(cls) -> datetime:  # type: ignore[override]
+            return datetime.combine(target, datetime.min.time())
+
     monkeypatch.setattr(main, "date", FrozenDate)
     monkeypatch.setattr(crud, "date", FrozenDate)
+    monkeypatch.setattr(crud, "datetime", FrozenDateTime)
 
 
 def _expected_cycle_label(
@@ -216,6 +222,7 @@ def test_incremental_completion_resets_with_new_window(
     with session_factory() as session:
         persistent_card = session.get(CreditCard, card.id)
         assert persistent_card is not None
+        _freeze_today(monkeypatch, date(2024, 10, 15))
         benefit = crud.create_benefit(
             session,
             persistent_card,
@@ -229,14 +236,6 @@ def test_incremental_completion_resets_with_new_window(
         )
         session.refresh(benefit)
 
-        class OctoberDate(date):
-            @classmethod
-            def today(cls) -> date:
-                return date(2024, 10, 15)
-
-        monkeypatch.setattr(main, "date", OctoberDate)
-        monkeypatch.setattr(crud, "date", OctoberDate)
-
         crud.create_benefit_redemption(
             session,
             benefit,
@@ -249,13 +248,7 @@ def test_incremental_completion_resets_with_new_window(
         session.refresh(benefit)
         assert benefit.is_used is True
 
-    class NovemberDate(date):
-        @classmethod
-        def today(cls) -> date:
-            return date(2024, 11, 1)
-
-    monkeypatch.setattr(main, "date", NovemberDate)
-    monkeypatch.setattr(crud, "date", NovemberDate)
+    _freeze_today(monkeypatch, date(2024, 11, 1))
 
     response = client.get("/api/cards")
     assert response.status_code == 200
@@ -384,6 +377,85 @@ def test_transaction_completion_remains_in_origin_window(
     next_window_payload = next(item for item in benefits if item["id"] == benefit_id)
     assert next_window_payload["is_used"] is False
     assert next_window_payload["current_window_total"] == pytest.approx(0.0)
+
+
+def test_incremental_manual_completion_after_prior_window_activity(
+    engine,
+    session_factory: sessionmaker,
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Manual toggles should still mark the active window complete after prior redemptions."""
+
+    reset_database(engine)
+    first_window_date = date(2024, 10, 12)
+    second_window_date = date(2024, 11, 3)
+
+    card = create_card(
+        session_factory,
+        name="Manual Incremental Override",
+        card_mode=YearTrackingMode.calendar,
+    )
+
+    benefit_id: int
+
+    with session_factory() as session:
+        persistent_card = session.get(CreditCard, card.id)
+        assert persistent_card is not None
+        _freeze_today(monkeypatch, first_window_date)
+        benefit = crud.create_benefit(
+            session,
+            persistent_card,
+            BenefitCreate(
+                name="Quarterly Dining Credit",
+                description="",
+                frequency=BenefitFrequency.monthly,
+                type=BenefitType.incremental,
+                value=50.0,
+                window_values=[50.0] * 12,
+            ),
+        )
+        session.refresh(benefit)
+        assert benefit.id is not None
+        benefit_id = benefit.id
+
+        crud.create_benefit_redemption(
+            session,
+            benefit,
+            BenefitRedemptionCreate(
+                label="October dining", amount=50.0, occurred_on=first_window_date
+            ),
+        )
+        session.refresh(benefit)
+        assert benefit.is_used is True
+
+    _freeze_today(monkeypatch, second_window_date)
+    response = client.get("/api/cards")
+    assert response.status_code == 200
+    cards = response.json()
+    assert cards
+    benefits = cards[0]["benefits"]
+    payload = next(item for item in benefits if item["id"] == benefit_id)
+    assert payload["is_used"] is False
+    assert payload["current_window_total"] == pytest.approx(0.0)
+
+    with session_factory() as session:
+        benefit = crud.get_benefit(session, benefit_id)
+        assert benefit is not None
+        benefit.is_used = True
+        benefit.used_at = datetime.combine(second_window_date, datetime.min.time())
+        session.add(benefit)
+        session.commit()
+
+    response = client.get("/api/cards")
+    assert response.status_code == 200
+    cards = response.json()
+    assert cards
+    benefits = cards[0]["benefits"]
+    payload = next(item for item in benefits if item["id"] == benefit_id)
+    assert payload["is_used"] is True
+    assert payload["current_window_total"] == pytest.approx(0.0)
+
 
 def test_recurring_expiration_rolls_forward(
     engine,

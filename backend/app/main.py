@@ -914,6 +914,7 @@ def build_card_response(session: Session, card: CreditCard) -> CreditCardWithBen
             current_window_value,
             cycle_start=cycle_start,
             window_start=window_start,
+            reference_date=reference_date,
         )
         benefits.append(
             build_benefit_read(
@@ -1511,6 +1512,7 @@ def _derive_effective_usage(
     *,
     cycle_start: Optional[date],
     window_start: Optional[date],
+    reference_date: Optional[date] = None,
 ) -> bool:
     """Resolve the effective usage state for a benefit in the active window."""
 
@@ -1549,9 +1551,10 @@ def _derive_effective_usage(
                 return True
             if (
                 benefit.is_used
-                and cycle_amount <= 0
+                and window_amount <= 1e-6
                 and used_at_date is not None
                 and (period_start is None or used_at_date >= period_start)
+                and (reference_date is None or used_at_date <= reference_date)
             ):
                 return True
             return False
@@ -1626,6 +1629,7 @@ def build_enriched_benefit(
         current_window_value,
         cycle_start=cycle_start,
         window_start=window_start,
+        reference_date=reference_date,
     )
     return build_benefit_read(
         benefit,

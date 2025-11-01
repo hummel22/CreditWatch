@@ -911,6 +911,7 @@ def build_card_response(session: Session, card: CreditCard) -> CreditCardWithBen
             cycle_total_tuple,
             window_total_tuple,
             cycle_target_value,
+            current_window_value,
             cycle_start=cycle_start,
             window_start=window_start,
         )
@@ -1506,6 +1507,7 @@ def _derive_effective_usage(
     cycle_totals: Tuple[float, int] | None,
     window_totals: Tuple[float, int] | None,
     cycle_target_value: Optional[float],
+    current_window_value: Optional[float],
     *,
     cycle_start: Optional[date],
     window_start: Optional[date],
@@ -1531,6 +1533,8 @@ def _derive_effective_usage(
     if benefit.type == BenefitType.standard:
         if window_count > 0 or window_amount > 0:
             return True
+        if cycle_amount > 0:
+            return False
         period_start = window_start or cycle_start
         if period_start:
             if used_at_date is None or used_at_date < period_start:
@@ -1538,11 +1542,25 @@ def _derive_effective_usage(
         return effective
 
     if benefit.type == BenefitType.incremental:
+        window_target = float(current_window_value or 0)
+        period_start = window_start or cycle_start
+        if window_target > 0:
+            if window_amount >= window_target - 1e-6:
+                return True
+            if (
+                benefit.is_used
+                and cycle_amount <= 0
+                and used_at_date is not None
+                and (period_start is None or used_at_date >= period_start)
+            ):
+                return True
+            return False
+
         target_value = float(cycle_target_value or 0)
         if target_value > 0 and cycle_amount >= target_value - 1e-6:
             return True
-        if cycle_start:
-            if used_at_date is None or used_at_date < cycle_start:
+        if period_start:
+            if used_at_date is None or used_at_date < period_start:
                 return False
         return effective
 
@@ -1605,6 +1623,7 @@ def build_enriched_benefit(
         cycle_total_tuple,
         window_total_tuple,
         cycle_target_value,
+        current_window_value,
         cycle_start=cycle_start,
         window_start=window_start,
     )

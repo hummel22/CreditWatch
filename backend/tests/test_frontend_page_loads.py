@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
@@ -149,7 +149,19 @@ def test_notifications_page_loads_history(
 ) -> None:
     reset_database(engine)
     seed_notification_settings(session_factory)
-    seed_notification_history(session_factory, response_message="accepted")
+    seed_notification_history(
+        session_factory,
+        response_message="accepted",
+        categories={
+            "expiring_today": [
+                {
+                    "card_name": "Chase Sapphire Preferred",
+                    "benefit_name": "DoorDash Credit",
+                    "expiration_date": date(2026, 3, 31),
+                }
+            ]
+        },
+    )
 
     history_response = client.get("/api/admin/notifications/history")
     assert history_response.status_code == 200
@@ -158,4 +170,4 @@ def test_notifications_page_loads_history(
     first_entry = entries[0]
     assert first_entry["event_type"] == "daily"
     assert first_entry["response_message"] == "accepted"
-
+    assert first_entry["categories"]["expiring_today"][0]["expiration_date"] == "2026-03-31"

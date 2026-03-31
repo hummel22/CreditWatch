@@ -4,6 +4,7 @@ import calendar
 from datetime import date, datetime
 from typing import Dict, List, Optional, Sequence, Tuple
 
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func, or_
 from sqlmodel import Session, select
 
@@ -542,6 +543,7 @@ def log_notification_event(
     categories: Dict[str, object] | None,
     reason: str | None,
 ) -> NotificationLog:
+    serializable_categories = jsonable_encoder(categories or {})
     entry = NotificationLog(
         event_type=event_type,
         title=title,
@@ -550,7 +552,7 @@ def log_notification_event(
         sent=sent,
         response_message=response_message,
         reason=reason,
-        categories=categories or {},
+        categories=serializable_categories,
     )
     session.add(entry)
     session.commit()

@@ -508,3 +508,56 @@ def test_recurring_expiration_rolls_forward(
     payload = next(item for item in benefits if item["id"] == benefit_id)
 
     assert payload["expiration_date"] == "2025-10-31"
+
+
+def test_recurring_expiration_overrides_stale_future_date(
+    engine,
+    session_factory: sessionmaker,
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Recurring benefits should ignore stale future stored expirations."""
+
+    reset_database(engine)
+    target_today = date(2026, 3, 31)
+
+    class FrozenDate(date):
+        @classmethod
+        def today(cls) -> date:
+            return target_today
+
+    monkeypatch.setattr(main, "date", FrozenDate)
+    monkeypatch.setattr(crud, "date", FrozenDate)
+
+    card = create_card(
+        session_factory,
+        name="Stale Expiration Card",
+        card_mode=YearTrackingMode.calendar,
+    )
+
+    with session_factory() as session:
+        persistent_card = session.get(CreditCard, card.id)
+        assert persistent_card is not None
+        benefit = crud.create_benefit(
+            session,
+            persistent_card,
+            BenefitCreate(
+                name="Monthly Credit",
+                description="",
+                frequency=BenefitFrequency.monthly,
+                type=BenefitType.standard,
+                value=10.0,
+                expiration_date=date(2026, 12, 31),
+            ),
+        )
+        session.refresh(benefit)
+        benefit_id = benefit.id
+
+    response = client.get("/api/cards")
+    assert response.status_code == 200
+    cards = response.json()
+    assert cards
+    benefits = cards[0]["benefits"]
+    payload = next(item for item in benefits if item["id"] == benefit_id)
+
+    assert payload["expiration_date"] == "2026-03-31"

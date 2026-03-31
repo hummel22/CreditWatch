@@ -1432,22 +1432,7 @@ def _compute_benefit_expiration(
 
     stored_expiration = benefit.expiration_date
 
-    if expected_expiration is None:
-        return stored_expiration
-
-    if stored_expiration is None:
-        return expected_expiration
-
-    if (
-        stored_expiration < reference_date
-        and expected_expiration >= reference_date
-    ):
-        return expected_expiration
-
-    if (
-        benefit.window_tracking_mode is not None
-        and stored_expiration != expected_expiration
-    ):
+    if expected_expiration is not None:
         return expected_expiration
 
     return stored_expiration

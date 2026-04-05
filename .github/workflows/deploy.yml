@@ -133,7 +133,7 @@ jobs:
 
           echo "Checking backend..."
           for i in $(seq 1 $RETRIES); do
-            if curl -sf http://localhost:8010/api/cards > /dev/null 2>&1; then
+            if curl -sf http://creditwatch:8010/api/cards > /dev/null 2>&1; then
               echo "Backend healthy"
               break
             fi
@@ -148,7 +148,7 @@ jobs:
 
           echo "Checking frontend..."
           for i in $(seq 1 $RETRIES); do
-            if curl -sf http://localhost:4173 > /dev/null 2>&1; then
+            if curl -sf http://creditwatch_ui:80 > /dev/null 2>&1; then
               echo "Frontend healthy"
               break
             fi

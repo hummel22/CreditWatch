@@ -67,6 +67,11 @@ jobs:
 
           echo "image_tag=$TAG" >> $GITHUB_OUTPUT
 
+      - name: Setup SSH known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+
       - name: Pull latest code
         if: ${{ inputs.rollback_to == '' }}
         working-directory: /repos/CreditWatch

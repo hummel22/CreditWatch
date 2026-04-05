@@ -194,7 +194,7 @@ jobs:
             ERROR="Workflow failed: ${{ job.status }}"
           fi
 
-          curl -sf -X POST "${{ env.NANOCLAW_URL }}/api/deploy/webhook" \
+          curl -sf -X POST "${{ env.NANOCLAW_URL }}/web/api/deploy/webhook" \
             -H "Content-Type: application/json" \
             -d "{
               \"service\": \"creditwatch\",

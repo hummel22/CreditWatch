@@ -128,8 +128,8 @@ jobs:
       - name: Health check
         id: health
         run: |
-          RETRIES=6
-          DELAY=5
+          RETRIES=12
+          DELAY=10
 
           echo "Checking backend..."
           for i in $(seq 1 $RETRIES); do

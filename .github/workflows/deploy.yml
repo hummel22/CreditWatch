@@ -71,7 +71,7 @@ jobs:
         run: |
           mkdir -p /tmp/.ssh
           ssh-keyscan github.com >> /tmp/.ssh/known_hosts 2>/dev/null
-          echo "GIT_SSH_COMMAND=ssh -i /root/.ssh/id_ed25519_github -o UserKnownHostsFile=/tmp/.ssh/known_hosts" >> $GITHUB_ENV
+          echo "GIT_SSH_COMMAND=ssh -F /dev/null -i /root/.ssh/id_ed25519_github -o UserKnownHostsFile=/tmp/.ssh/known_hosts" >> $GITHUB_ENV
 
       - name: Pull latest code
         if: ${{ inputs.rollback_to == '' }}

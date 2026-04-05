@@ -1,0 +1,209 @@
+name: Deploy CreditWatch
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to deploy'
+        required: false
+        default: 'main'
+      rollback_to:
+        description: 'Image tag to roll back to (leave empty for normal deploy)'
+        required: false
+        default: ''
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, ARM64]
+    env:
+      REGISTRY: localhost:5001
+      REPO_PATH: /repos/CreditWatch
+      COMPOSE_FILE: /repos/homelab/stacks/mini/creditwatch/docker-compose.yml
+      ENV_FILE: /repos/homelab/.env
+      NANOCLAW_URL: http://10.11.12.93:4000
+
+    steps:
+      - name: Gather current state
+        id: current
+        run: |
+          # Get current image digests for rollback reference
+          CURRENT_BACKEND=$(docker inspect creditwatch --format '{{.Image}}' 2>/dev/null || echo "none")
+          CURRENT_FRONTEND=$(docker inspect creditwatch_ui --format '{{.Image}}' 2>/dev/null || echo "none")
+
+          # Get current tag from image name
+          CURRENT_TAG=$(docker inspect creditwatch --format '{{.Config.Image}}' 2>/dev/null | sed 's/.*://' || echo "unknown")
+
+          echo "backend_image=$CURRENT_BACKEND" >> $GITHUB_OUTPUT
+          echo "frontend_image=$CURRENT_FRONTEND" >> $GITHUB_OUTPUT
+          echo "current_tag=$CURRENT_TAG" >> $GITHUB_OUTPUT
+          echo "Current backend: $CURRENT_BACKEND"
+          echo "Current frontend: $CURRENT_FRONTEND"
+          echo "Current tag: $CURRENT_TAG"
+
+      - name: Tag previous images
+        run: |
+          # Tag current :latest as :previous for quick rollback
+          docker tag ${{ env.REGISTRY }}/creditwatch:latest ${{ env.REGISTRY }}/creditwatch:previous 2>/dev/null || true
+          docker tag ${{ env.REGISTRY }}/creditwatch_ui:latest ${{ env.REGISTRY }}/creditwatch_ui:previous 2>/dev/null || true
+          docker push ${{ env.REGISTRY }}/creditwatch:previous 2>/dev/null || true
+          docker push ${{ env.REGISTRY }}/creditwatch_ui:previous 2>/dev/null || true
+
+      - name: Rollback (if rollback_to is set)
+        if: ${{ inputs.rollback_to != '' }}
+        id: rollback
+        run: |
+          TAG="${{ inputs.rollback_to }}"
+          echo "Rolling back to tag: $TAG"
+
+          # Pull the specific tag and retag as :latest
+          docker pull ${{ env.REGISTRY }}/creditwatch:$TAG
+          docker pull ${{ env.REGISTRY }}/creditwatch_ui:$TAG
+
+          docker tag ${{ env.REGISTRY }}/creditwatch:$TAG ${{ env.REGISTRY }}/creditwatch:latest
+          docker tag ${{ env.REGISTRY }}/creditwatch_ui:$TAG ${{ env.REGISTRY }}/creditwatch_ui:latest
+
+          docker push ${{ env.REGISTRY }}/creditwatch:latest
+          docker push ${{ env.REGISTRY }}/creditwatch_ui:latest
+
+          echo "image_tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Pull latest code
+        if: ${{ inputs.rollback_to == '' }}
+        working-directory: /repos/CreditWatch
+        run: |
+          git fetch origin
+          git checkout ${{ inputs.branch }}
+          git pull origin ${{ inputs.branch }}
+
+      - name: Build and push backend
+        if: ${{ inputs.rollback_to == '' }}
+        id: build_backend
+        working-directory: /repos/CreditWatch
+        run: |
+          SHA=$(git rev-parse --short HEAD)
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+
+          docker build \
+            -t ${{ env.REGISTRY }}/creditwatch:$SHA \
+            -t ${{ env.REGISTRY }}/creditwatch:latest \
+            -f backend/Dockerfile \
+            backend/
+
+          docker push ${{ env.REGISTRY }}/creditwatch:$SHA
+          docker push ${{ env.REGISTRY }}/creditwatch:latest
+
+      - name: Build and push frontend
+        if: ${{ inputs.rollback_to == '' }}
+        working-directory: /repos/CreditWatch
+        run: |
+          SHA=${{ steps.build_backend.outputs.sha }}
+
+          docker build \
+            -t ${{ env.REGISTRY }}/creditwatch_ui:$SHA \
+            -t ${{ env.REGISTRY }}/creditwatch_ui:latest \
+            --build-arg VITE_BACKEND_URL=http://mini.home.arpa \
+            --build-arg VITE_BACKEND_PORT=8010 \
+            --build-arg VITE_BUILD_MODE=production \
+            -f frontend/Dockerfile \
+            frontend/
+
+          docker push ${{ env.REGISTRY }}/creditwatch_ui:$SHA
+          docker push ${{ env.REGISTRY }}/creditwatch_ui:latest
+
+      - name: Deploy containers
+        run: |
+          docker compose --env-file ${{ env.ENV_FILE }} \
+            -f ${{ env.COMPOSE_FILE }} \
+            up -d creditwatch frontend
+
+          # Wait for containers to start
+          sleep 5
+
+      - name: Health check
+        id: health
+        run: |
+          RETRIES=6
+          DELAY=5
+
+          echo "Checking backend..."
+          for i in $(seq 1 $RETRIES); do
+            if curl -sf http://localhost:8010/api/cards > /dev/null 2>&1; then
+              echo "Backend healthy"
+              break
+            fi
+            if [ $i -eq $RETRIES ]; then
+              echo "Backend health check failed after $RETRIES attempts"
+              echo "healthy=false" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            echo "Attempt $i/$RETRIES failed, waiting ${DELAY}s..."
+            sleep $DELAY
+          done
+
+          echo "Checking frontend..."
+          for i in $(seq 1 $RETRIES); do
+            if curl -sf http://localhost:4173 > /dev/null 2>&1; then
+              echo "Frontend healthy"
+              break
+            fi
+            if [ $i -eq $RETRIES ]; then
+              echo "Frontend health check failed after $RETRIES attempts"
+              echo "healthy=false" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            echo "Attempt $i/$RETRIES failed, waiting ${DELAY}s..."
+            sleep $DELAY
+          done
+
+          echo "healthy=true" >> $GITHUB_OUTPUT
+
+      - name: Auto-rollback on failure
+        if: steps.health.outputs.healthy == 'false'
+        run: |
+          echo "Health check failed — rolling back to :previous"
+          docker tag ${{ env.REGISTRY }}/creditwatch:previous ${{ env.REGISTRY }}/creditwatch:latest 2>/dev/null || true
+          docker tag ${{ env.REGISTRY }}/creditwatch_ui:previous ${{ env.REGISTRY }}/creditwatch_ui:latest 2>/dev/null || true
+          docker push ${{ env.REGISTRY }}/creditwatch:latest 2>/dev/null || true
+          docker push ${{ env.REGISTRY }}/creditwatch_ui:latest 2>/dev/null || true
+
+          docker compose --env-file ${{ env.ENV_FILE }} \
+            -f ${{ env.COMPOSE_FILE }} \
+            up -d creditwatch frontend
+
+          sleep 5
+
+      - name: Notify NanoClaw
+        if: always()
+        run: |
+          if [ "${{ inputs.rollback_to }}" != "" ]; then
+            IMAGE_TAG="${{ inputs.rollback_to }}"
+            ACTION="rollback"
+          else
+            IMAGE_TAG="${{ steps.build_backend.outputs.sha }}"
+            ACTION="deploy"
+          fi
+
+          if [ "${{ steps.health.outputs.healthy }}" == "false" ]; then
+            STATUS="rolled_back"
+            ERROR="Health check failed after deploy — auto-rolled back to previous"
+          elif [ "${{ job.status }}" == "success" ]; then
+            STATUS="success"
+            ERROR=""
+          else
+            STATUS="failure"
+            ERROR="Workflow failed: ${{ job.status }}"
+          fi
+
+          curl -sf -X POST "${{ env.NANOCLAW_URL }}/api/deploy/webhook" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"service\": \"creditwatch\",
+              \"action\": \"$ACTION\",
+              \"branch\": \"${{ inputs.branch }}\",
+              \"image_tag\": \"$IMAGE_TAG\",
+              \"previous_tag\": \"${{ steps.current.outputs.current_tag }}\",
+              \"github_run_id\": \"${{ github.run_id }}\",
+              \"github_run_url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\",
+              \"status\": \"$STATUS\",
+              \"error_message\": \"$ERROR\"
+            }" || echo "Warning: Failed to notify NanoClaw (non-fatal)"

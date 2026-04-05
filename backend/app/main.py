@@ -141,6 +141,11 @@ def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/api/version")
+def get_version():
+    return {"version": app.version, "git_sha": os.environ.get("GIT_SHA", "unknown")}
+
+
 @app.get("/api/interface/settings", response_model=InterfaceSettingsRead)
 def read_interface_settings(session: Session = Depends(get_session)) -> InterfaceSettingsRead:
     return crud.get_interface_settings(session)

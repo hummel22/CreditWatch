@@ -89,7 +89,7 @@ jobs:
           SHA=$(git rev-parse --short HEAD)
           echo "sha=$SHA" >> $GITHUB_OUTPUT
 
-          docker build --build-arg GIT_SHA=$SHA \
+          docker build --no-cache --build-arg GIT_SHA=$SHA \
             -t ${{ env.REGISTRY }}/creditwatch:$SHA \
             -t ${{ env.REGISTRY }}/creditwatch:latest \
             -f backend/Dockerfile \
@@ -104,7 +104,7 @@ jobs:
         run: |
           SHA=${{ steps.build_backend.outputs.sha }}
 
-          docker build --build-arg GIT_SHA=$SHA \
+          docker build --no-cache --build-arg GIT_SHA=$SHA \
             -t ${{ env.REGISTRY }}/creditwatch_ui:$SHA \
             -t ${{ env.REGISTRY }}/creditwatch_ui:latest \
             --build-arg VITE_BACKEND_URL=http://mini.home.arpa \

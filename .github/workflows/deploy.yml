@@ -27,11 +27,12 @@ jobs:
         id: current
         run: |
           # Get current image digests for rollback reference
-          CURRENT_BACKEND=$(docker inspect creditwatch --format '{{.Image}}' 2>/dev/null || echo "none")
-          CURRENT_FRONTEND=$(docker inspect creditwatch_ui --format '{{.Image}}' 2>/dev/null || echo "none")
+          CURRENT_BACKEND=$(docker inspect creditwatch --format '{{.Image}}' 2>/dev/null) || CURRENT_BACKEND="none"
+          CURRENT_FRONTEND=$(docker inspect creditwatch_ui --format '{{.Image}}' 2>/dev/null) || CURRENT_FRONTEND="none"
 
           # Get current tag from image name
-          CURRENT_TAG=$(docker inspect creditwatch --format '{{.Config.Image}}' 2>/dev/null | sed 's/.*://' || echo "unknown")
+          CURRENT_TAG=$(docker inspect creditwatch --format '{{.Config.Image}}' 2>/dev/null | sed 's/.*://') || CURRENT_TAG="unknown"
+          [ -z "$CURRENT_TAG" ] && CURRENT_TAG="unknown"
 
           echo "backend_image=$CURRENT_BACKEND" >> $GITHUB_OUTPUT
           echo "frontend_image=$CURRENT_FRONTEND" >> $GITHUB_OUTPUT

@@ -1211,24 +1211,22 @@ def _filter_frequency_windows(
 def _window_matches_frequency_window(
     window: Dict[str, object], exclusion: BenefitWindowExclusion
 ) -> bool:
+    start = window.get("start")
+    end = window.get("end")
+    # Date matching is year-specific — prevents cross-year false positives
+    # that index-only or label-only matching would cause.
+    if isinstance(start, date) and isinstance(end, date):
+        if exclusion.window_start is not None and exclusion.window_end is not None:
+            return exclusion.window_start == start and exclusion.window_end == end
+    # Fallback: index only when exclusion lacks dates.
     index = window.get("index")
     if (
-        exclusion.window_index is not None
+        exclusion.window_start is None
+        and exclusion.window_end is None
+        and exclusion.window_index is not None
         and index is not None
         and exclusion.window_index == index
     ):
-        return True
-    start = window.get("start")
-    end = window.get("end")
-    if (
-        isinstance(start, date)
-        and isinstance(end, date)
-        and exclusion.window_start == start
-        and exclusion.window_end == end
-    ):
-        return True
-    label = window.get("label")
-    if exclusion.window_label and exclusion.window_label == label:
         return True
     return False
 
@@ -1361,7 +1359,14 @@ def gather_benefit_metrics(
             active_indexes = [window["index"] for window in active_windows]
             selected_window = _select_window_for_reference(active_windows, reference_date)
             if selected_window is None and active_windows:
-                selected_window = active_windows[-1]
+                # Pick the next upcoming window rather than the last one.
+                for w in active_windows:
+                    w_start = w.get("start")
+                    if isinstance(w_start, date) and w_start > reference_date:
+                        selected_window = w
+                        break
+                if selected_window is None:
+                    selected_window = active_windows[-1]
 
             if selected_window:
                 window_start = selected_window["start"]

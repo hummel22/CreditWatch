@@ -16,6 +16,7 @@ from backend.app.schemas import (
     BenefitCreate,
     BenefitRedemptionCreate,
     BenefitUpdate,
+    BenefitWindowExclusionCreate,
 )
 
 from .factories import add_benefit_set, create_card, reset_database
@@ -561,3 +562,246 @@ def test_recurring_expiration_overrides_stale_future_date(
     payload = next(item for item in benefits if item["id"] == benefit_id)
 
     assert payload["expiration_date"] == "2026-03-31"
+
+
+def test_cross_year_exclusions_do_not_bleed(
+    engine,
+    session_factory: sessionmaker,
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exclusions with 2025 dates should not exclude 2026 windows of the same index."""
+
+    reset_database(engine)
+    _freeze_today(monkeypatch, date(2026, 4, 7))
+
+    card = create_card(
+        session_factory,
+        name="Cross-Year Card",
+        card_mode=YearTrackingMode.anniversary,
+    )
+
+    with session_factory() as session:
+        persistent_card = session.get(CreditCard, card.id)
+        assert persistent_card is not None
+        benefit = crud.create_benefit(
+            session,
+            persistent_card,
+            BenefitCreate(
+                name="Instacart Credit",
+                description="",
+                frequency=BenefitFrequency.monthly,
+                type=BenefitType.incremental,
+                value=20.0,
+                window_tracking_mode=YearTrackingMode.calendar,
+            ),
+        )
+        session.refresh(benefit)
+        benefit_id = benefit.id
+
+        # Exclude Jan–Aug 2025 (previous year) by date and index.
+        for month_idx in range(1, 9):
+            start = date(2025, month_idx, 1)
+            end_month = month_idx + 1 if month_idx < 12 else 1
+            end_year = 2025 if month_idx < 12 else 2026
+            crud.create_benefit_window_exclusion(
+                session,
+                benefit,
+                BenefitWindowExclusionCreate(
+                    window_start=start,
+                    window_end=date(end_year, end_month, 1),
+                    window_index=month_idx,
+                    window_label=start.strftime("%B %Y"),
+                ),
+            )
+
+    response = client.get("/api/cards")
+    assert response.status_code == 200
+    cards = response.json()
+    assert cards
+    benefits = cards[0]["benefits"]
+    payload = next(item for item in benefits if item["id"] == benefit_id)
+
+    # April 2026 should be the current window, NOT December.
+    assert payload["current_window_label"] == "Apr"
+    assert payload["current_window_index"] == 4
+    # All 12 windows of 2026 should be active (exclusions are 2025-scoped).
+    assert payload["cycle_window_count"] == 12
+    # Expiration should be end of April, not end of December.
+    assert payload["expiration_date"] == "2026-04-30"
+
+
+def test_same_year_exclusion_still_works(
+    engine,
+    session_factory: sessionmaker,
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exclusions with matching dates in the same cycle year should still exclude."""
+
+    reset_database(engine)
+    _freeze_today(monkeypatch, date(2026, 4, 7))
+
+    card = create_card(
+        session_factory,
+        name="Same-Year Exclusion Card",
+        card_mode=YearTrackingMode.calendar,
+    )
+
+    with session_factory() as session:
+        persistent_card = session.get(CreditCard, card.id)
+        assert persistent_card is not None
+        benefit = crud.create_benefit(
+            session,
+            persistent_card,
+            BenefitCreate(
+                name="Monthly Credit",
+                description="",
+                frequency=BenefitFrequency.monthly,
+                type=BenefitType.standard,
+                value=10.0,
+            ),
+        )
+        session.refresh(benefit)
+        benefit_id = benefit.id
+
+        # Exclude Jan–Mar 2026 (same cycle year).
+        for month_idx in range(1, 4):
+            crud.create_benefit_window_exclusion(
+                session,
+                benefit,
+                BenefitWindowExclusionCreate(
+                    window_start=date(2026, month_idx, 1),
+                    window_end=date(2026, month_idx + 1, 1),
+                    window_index=month_idx,
+                ),
+            )
+
+    response = client.get("/api/cards")
+    assert response.status_code == 200
+    cards = response.json()
+    benefits = cards[0]["benefits"]
+    payload = next(item for item in benefits if item["id"] == benefit_id)
+
+    # 12 total - 3 excluded = 9 active windows.
+    assert payload["cycle_window_count"] == 9
+    assert payload["current_window_label"] == "Apr"
+    assert 1 not in payload["active_window_indexes"]
+    assert 2 not in payload["active_window_indexes"]
+    assert 3 not in payload["active_window_indexes"]
+
+
+def test_fallback_picks_next_upcoming_window(
+    engine,
+    session_factory: sessionmaker,
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When today is in an excluded window, fallback should select the next future window."""
+
+    reset_database(engine)
+    _freeze_today(monkeypatch, date(2026, 4, 15))
+
+    card = create_card(
+        session_factory,
+        name="Fallback Card",
+        card_mode=YearTrackingMode.calendar,
+    )
+
+    with session_factory() as session:
+        persistent_card = session.get(CreditCard, card.id)
+        assert persistent_card is not None
+        benefit = crud.create_benefit(
+            session,
+            persistent_card,
+            BenefitCreate(
+                name="Gapped Credit",
+                description="",
+                frequency=BenefitFrequency.monthly,
+                type=BenefitType.standard,
+                value=15.0,
+            ),
+        )
+        session.refresh(benefit)
+        benefit_id = benefit.id
+
+        # Exclude only April 2026 (the current month).
+        crud.create_benefit_window_exclusion(
+            session,
+            benefit,
+            BenefitWindowExclusionCreate(
+                window_start=date(2026, 4, 1),
+                window_end=date(2026, 5, 1),
+                window_index=4,
+            ),
+        )
+
+    response = client.get("/api/cards")
+    assert response.status_code == 200
+    cards = response.json()
+    benefits = cards[0]["benefits"]
+    payload = next(item for item in benefits if item["id"] == benefit_id)
+
+    # Should fall forward to May, not back to December.
+    assert payload["current_window_label"] == "May"
+    assert payload["current_window_index"] == 5
+    assert payload["expiration_date"] == "2026-05-31"
+
+
+def test_fallback_uses_last_past_window_when_no_future(
+    engine,
+    session_factory: sessionmaker,
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When no future active windows exist, fallback should use the last past window."""
+
+    reset_database(engine)
+    _freeze_today(monkeypatch, date(2026, 12, 15))
+
+    card = create_card(
+        session_factory,
+        name="No Future Card",
+        card_mode=YearTrackingMode.calendar,
+    )
+
+    with session_factory() as session:
+        persistent_card = session.get(CreditCard, card.id)
+        assert persistent_card is not None
+        benefit = crud.create_benefit(
+            session,
+            persistent_card,
+            BenefitCreate(
+                name="Limited Credit",
+                description="",
+                frequency=BenefitFrequency.monthly,
+                type=BenefitType.standard,
+                value=10.0,
+            ),
+        )
+        session.refresh(benefit)
+        benefit_id = benefit.id
+
+        # Exclude Nov and Dec 2026 (current + last month of cycle).
+        for month_idx in [11, 12]:
+            end_month = month_idx + 1 if month_idx < 12 else 1
+            end_year = 2026 if month_idx < 12 else 2027
+            crud.create_benefit_window_exclusion(
+                session,
+                benefit,
+                BenefitWindowExclusionCreate(
+                    window_start=date(2026, month_idx, 1),
+                    window_end=date(end_year, end_month, 1),
+                    window_index=month_idx,
+                ),
+            )
+
+    response = client.get("/api/cards")
+    assert response.status_code == 200
+    cards = response.json()
+    benefits = cards[0]["benefits"]
+    payload = next(item for item in benefits if item["id"] == benefit_id)
+
+    # No future active windows after Dec, so fall back to October (last past active).
+    assert payload["current_window_label"] == "Oct"
+    assert payload["current_window_index"] == 10

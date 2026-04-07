@@ -710,6 +710,10 @@ def _resolve_window_bounds(
         if window_start <= reference < window_end:
             return window_start, window_end, window_index
 
+    # Pick the next upcoming window rather than the last one.
+    for window_start, window_end, window_index in active_windows:
+        if window_start > reference:
+            return window_start, window_end, window_index
     return active_windows[-1]
 
 
@@ -719,9 +723,11 @@ def _window_matches_exclusion(
     window_index: int,
     exclusion: BenefitWindowExclusion,
 ) -> bool:
+    # Date matching is year-specific — prevents cross-year false positives.
+    if exclusion.window_start is not None and exclusion.window_end is not None:
+        return exclusion.window_start == window_start and exclusion.window_end == window_end
+    # Fallback: index only when exclusion lacks dates.
     if exclusion.window_index and exclusion.window_index == window_index:
-        return True
-    if exclusion.window_start == window_start and exclusion.window_end == window_end:
         return True
     return False
 

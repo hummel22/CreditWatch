@@ -3903,24 +3903,26 @@ function isWindowExcluded(window, exclusions) {
     return false
   }
   return exclusions.some((exclusion) => {
-    if (
-      typeof exclusion.window_index === 'number' &&
-      typeof window.index === 'number' &&
-      exclusion.window_index === window.index
-    ) {
-      return true
-    }
+    // Date matching is year-specific — prevents cross-year false positives.
     if (
       exclusion.window_start instanceof Date &&
       exclusion.window_end instanceof Date &&
       window.start instanceof Date &&
-      window.end instanceof Date &&
-      exclusion.window_start.getTime() === window.start.getTime() &&
-      exclusion.window_end.getTime() === window.end.getTime()
+      window.end instanceof Date
     ) {
-      return true
+      return (
+        exclusion.window_start.getTime() === window.start.getTime() &&
+        exclusion.window_end.getTime() === window.end.getTime()
+      )
     }
-    if (exclusion.window_label && exclusion.window_label === window.label) {
+    // Fallback: index only when exclusion lacks dates.
+    if (
+      !(exclusion.window_start instanceof Date) &&
+      !(exclusion.window_end instanceof Date) &&
+      typeof exclusion.window_index === 'number' &&
+      typeof window.index === 'number' &&
+      exclusion.window_index === window.index
+    ) {
       return true
     }
     return false

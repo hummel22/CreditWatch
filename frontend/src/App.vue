@@ -4239,6 +4239,27 @@ function closeHistoryModal() {
   historyModal.windowOverride = null
 }
 
+function openBenefitFromQueryString() {
+  if (typeof window === 'undefined') {
+    return
+  }
+  const params = new URLSearchParams(window.location.search)
+  const cardId = Number(params.get('card'))
+  const benefitId = Number(params.get('benefit'))
+  if (!cardId || !benefitId) {
+    return
+  }
+  const card = findCard(cardId)
+  const benefit = findBenefit(cardId, benefitId)
+  if (!card || !benefit) {
+    return
+  }
+  // Strip the deep-link params so a refresh/back doesn't reopen the modal.
+  const cleanUrl = `${window.location.pathname}${window.location.hash}`
+  window.history.replaceState(window.history.state, '', cleanUrl)
+  handleEditBenefitFromCollection(card, benefit)
+}
+
 onMounted(async () => {
   await loadInterfaceSettings()
   await loadNotificationSettings()
@@ -4246,6 +4267,7 @@ onMounted(async () => {
   await loadFrequencies()
   await loadPreconfiguredCards()
   await loadCards({ preserveScroll: false })
+  openBenefitFromQueryString()
 })
 </script>
 

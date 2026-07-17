@@ -3,8 +3,11 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --include=dev
 COPY . .
-ARG VITE_BACKEND_URL=http://creditwatch
-ARG VITE_BACKEND_PORT=8010
+# Empty = same-origin /api requests; nginx (below) proxies them to the backend.
+# An absolute http:// URL here gets blocked as mixed content when the UI is
+# served over HTTPS (e.g. creditwatch.lab.streambudget.com).
+ARG VITE_BACKEND_URL=
+ARG VITE_BACKEND_PORT=
 ARG VITE_BUILD_MODE=development
 ENV VITE_BACKEND_URL=${VITE_BACKEND_URL}
 ENV VITE_BACKEND_PORT=${VITE_BACKEND_PORT}

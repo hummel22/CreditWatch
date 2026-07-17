@@ -14,13 +14,7 @@ services:
   frontend:
     build:
       context: ./frontend
-      args:
-        VITE_BACKEND_URL: http://creditwatch
-        VITE_BACKEND_PORT: "8010"
     depends_on:
       - creditwatch
-    environment:
-      - VITE_BACKEND_URL=http://creditwatch
-      - VITE_BACKEND_PORT=8010
     ports:
       - "5173:80"

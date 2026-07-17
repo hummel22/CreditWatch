@@ -22,6 +22,16 @@ function resolveBackendBaseURL() {
     if (rawPort) {
       url.port = String(rawPort)
     }
+    // Mixed-content guard: an http:// API base on an https:// page gets
+    // blocked by the browser, so fall back to same-origin requests (nginx
+    // and the Vite dev server both proxy /api to the backend).
+    if (
+      typeof window !== 'undefined' &&
+      window.location.protocol === 'https:' &&
+      url.protocol === 'http:'
+    ) {
+      return ''
+    }
     return url.origin
   } catch (error) {
     console.warn(
